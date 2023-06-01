@@ -34,6 +34,7 @@ class Trace:
     cutfreq = 25.           # cutfreqency of what is considered as input
     tuk_alpha = 1.0         # alpha of tukey window, if used
     superpos = 16           # sub windowing (superpos windows in framelen)
+    low_threshold = 50      # treshold for 'looooow input rate'
     threshold = 500.        # threshold for 'high input rate'
     noise_framelen = 0.3    # window width for noise analysis
     noise_superpos = 16     # subsampling for noise analysis windows
@@ -54,7 +55,7 @@ class Trace:
 
         self.gyro = self.data['gyro']
         self.throttle = self.data['throttle']
-        self.throt_hist, self.throt_scale = np.histogram(self.throttle, np.linspace(0, 100, 101, dtype=np.float64), normed=True)
+        self.throt_hist, self.throt_scale = np.histogram(self.throttle, np.linspace(0, 100, 101, dtype=np.float64), density=True)
 
         self.flen = self.stepcalc(self.time, Trace.framelen)        # array len corresponding to framelen in s
         self.rlen = self.stepcalc(self.time, Trace.resplen)         # array len corresponding to resplen in s
@@ -270,7 +271,7 @@ class Trace:
 
         hist2d = np.histogram2d(throts.flatten(), freqs.flatten(),
                                 range=[[0, 100], [y[0], y[-1]]],
-                                bins=bins, weights=weights.flatten(), normed=False)[0].transpose()
+                                bins=bins, weights=weights.flatten(), density=False)[0].transpose()
 
         hist2d = np.array(abs(hist2d), dtype=np.float64)
         hist2d_norm = np.copy(hist2d)
@@ -291,7 +292,7 @@ class Trace:
         weights = abs(spec.real)
         avr_thr = np.abs(thr).max(axis=1)
 
-        hist2d=self.hist2d(avr_thr, freq,weights,[101,len(freq)/4])
+        hist2d=self.hist2d(avr_thr, freq,weights,[101,int(len(freq)/4)])
 
         filt_width = 3  # width of gaussian smoothing for hist data
         hist2d_sm = gaussian_filter1d(hist2d['hist2d_norm'], filt_width, axis=1, mode='constant')
@@ -613,7 +614,8 @@ class CSV_log:
                 ###response vs throttle plot. more useful.
                 ax2 = plt.subplot(gs1[9:16, i * 10:i * 10 + 9])
                 plt.title(tr.name + ' response', y=0.88, color='w')
-                plt.pcolormesh(tr.thr_response['throt_scale'], tr.time_resp, tr.thr_response['hist2d_norm'], vmin=0., vmax=2.)
+                #plt.pcolormesh([tr.thr_response['throt_scale'], tr.time_resp], tr.thr_response['hist2d_norm'], vmin=0., vmax=2.)
+                plt.pcolormesh(tr.thr_response['hist2d_norm'], vmin=0., vmax=2.)
                 plt.ylabel('response time in s')
                 ax2.get_yaxis().set_label_coords(-0.1, 0.5)
                 plt.xlabel('throttle in %')
@@ -961,7 +963,7 @@ if __name__ == "__main__":
     parser.add_argument('-n', '--name', default='tmp', help='Plot name.')
     parser.add_argument(
         '--blackbox_decode',
-        default=os.path.join(os.getcwd(), 'Blackbox_decode.exe'),
+        default=os.path.join(os.getcwd(), 'blackbox_decode'),
         help='Path to Blackbox_decode.exe.')
     parser.add_argument('-s', '--show', default='Y', help='Y = show plot window when done.\nN = Do not. \nDefault = Y')
     parser.add_argument('-nb', '--noise_bounds', default='[[1.,10.1],[1.,100.],[1.,100.],[0.,4.]]', help='bounds of plots in noise analysis. use "auto" for autoscaling. \n default=[[1.,10.1],[1.,100.],[1.,100.],[0.,4.]]')
