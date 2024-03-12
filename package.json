@@ -1,0 +1,57 @@
+{
+  "name": "@uav.painkillers/pid-analyzer-wasm",
+  "author": "UAV-Painkillers (Jan Jaap)",
+  "description": "library that does PID analysis for Cleanflight based flight controllers using Python in Web Assembly",
+  "version": "1.13.0",
+  "types": "dist/types/index.d.ts",
+  "files": [
+    "dist",
+    "pyodide-index"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./pyodide-index": "./pyodide-index"
+  },
+  "sideEffects": false,
+  "private": false,
+  "scripts": {
+    "build": "node build.js",
+    "prepublishOnly": "npm run build",
+    "tsc": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VolkerGoeschl/PID-Analyzer.git"
+  },
+  "keywords": [
+    "betaflight",
+    "cleanflight",
+    "pid",
+    "analyzer",
+    "step",
+    "response",
+    "python",
+    "wasm",
+    "web",
+    "assembly",
+    "pyodide"
+  ],
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/VolkerGoeschl/PID-Analyzer/issues"
+  },
+  "homepage": "https://github.com/VolkerGoeschl/PID-Analyzer#readme",
+  "devDependencies": {
+    "@types/node": "^20.11.25",
+    "copy-webpack-plugin": "^12.0.2",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.4.2",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "vm-browserify": "^1.1.2"
+  }
+}
