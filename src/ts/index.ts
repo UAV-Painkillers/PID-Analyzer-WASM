@@ -174,36 +174,34 @@ export class PIDAnalyzer {
 
     const pyodide = this.getPyodide();
 
-    console.log("PYTHON: writing .bbl to FS");
-    pyodide.FS.mkdir("/logs");
+    const {exists: logFileExists} = await pyodide.FS.analyzePath("/logs/flightlog.bbl");
+    if (logFileExists) {
+      await pyodide.FS.unlink("/logs/flightlog.bbl");
+    }
+
+    const {exists: logsDirExists} = await pyodide.FS.analyzePath("/logs");
+    if (!logsDirExists) {
+      await pyodide.FS.mkdir("/logs");
+    }
     pyodide.FS.writeFile("/logs/flightlog.bbl", logFile);
 
     pyodide.registerJsModule("blackbox_decoder", {
       decode: async (path) => {
         try {
-          console.log("BB DECODER: called from python", path);
           const file = pyodide.FS.readFile(path);
           const decodedFiles = await this.decoder.decodeBlackbox(file);
-          console.log("BB DECODER: decoding done", decodedFiles);
           for (const decodedFile of decodedFiles) {
             const bblFileStart = path.split('/').pop().replace('.bbl', '');
             const csvIndex = decodedFile.fileName.split('.')[1];
 
             const outputFileName = `/logs/tmp/${bblFileStart}.${csvIndex}.csv`;
 
-            console.log(
-              "BB DECODER: writing file back to python",
-              outputFileName,
-            );
-
             await pyodide.FS.writeFile(
               outputFileName,
               decodedFile.content
             );
           }
-          console.log("BB DECODER: all files written back to python", await pyodide.FS.readdir("/logs/tmp"));
         } catch (error) {
-          console.error("BB DECODER: error", error);
         }
       },
     });
@@ -216,15 +214,9 @@ export class PIDAnalyzer {
       }
     });
 
-    pyodide.setStdout(({ batched }) => console.log(`PYTHON >> ${batched}`));
-    pyodide.setStderr(({ batched }) => console.error(`PYTHON >> ${batched}`));
-
-    console.log("PYTHON: executing code...");
     await pyodide.runPythonAsync(this.pythonCode);
-    console.log("PYTHON: code execution done...");
 
     const resultFiles = await pyodide.FS.readdir("/logs/tmp");
-    console.log("PYTHON FS.readdir('/logs/tmp')", resultFiles);
 
     const results: PIDAnalyzerResult[] = [];
     await Promise.all(resultFiles.map(async (fileName: string) => {
@@ -235,6 +227,9 @@ export class PIDAnalyzer {
       const content = pyodide.FS.readFile(`/logs/tmp/${fileName}`, {
         encoding: "utf8",
       });
+
+      await pyodide.FS.unlink(`/logs/tmp/${fileName}`);
+
       results.push(JSON.parse(content));
     }));
 

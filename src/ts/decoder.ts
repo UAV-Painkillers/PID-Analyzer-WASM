@@ -42,21 +42,16 @@ export class Decoder {
   public async decodeBlackbox(blackbox: ArrayBuffer) {
     await this.load();
 
-    console.log("BB DECODER: checking if /logs/logfile.bbl exists");
     const {exists: logFileExists} = await this.BlackboxDecodeModule.FS.analyzePath("/logs/logfile.bbl");
     if (logFileExists) {
-      console.log("BB DECODER: removing existing .bbl file");
       await this.BlackboxDecodeModule.FS.unlink("/logs/logfile.bbl");
     }
 
-    console.log("BB DECODER: checking if /logs directory exists");
     const {exists: logsDirExists} = await this.BlackboxDecodeModule.FS.analyzePath("/logs");
     if (!logsDirExists) {
-      console.log("BB DECODER: creating /logs directory");
       await this.BlackboxDecodeModule.FS.mkdir("/logs");
     }
 
-    console.log("BB DECODER: writing .bbl to FS");
     await this.BlackboxDecodeModule.FS.writeFile("/logs/logfile.bbl", blackbox);
 
     this.BlackboxDecodeModule.print = function (index) {
@@ -67,25 +62,25 @@ export class Decoder {
       while (memory[index] !== 0) {
         string += String.fromCharCode(memory[index++]);
       }
-      console.log(`BB DECODER >> ${string}`);
     };
 
-    console.log("BB DECODER: decoding");
     this.BlackboxDecodeModule._decode();
-    console.log("BB DECODER: decoding done");
 
     const files = this.BlackboxDecodeModule.FS.readdir("/logs");
-    console.log("BB DECODER: files in FS", files);
 
     const csvFileNames = files.filter((file: string) => file.endsWith(".csv"));
     const csvFiles = csvFileNames.map((fileName: string) => {
       const csv = this.BlackboxDecodeModule.FS.readFile(`/logs/${fileName}`, {
         encoding: "utf8",
       });
+
+      this.BlackboxDecodeModule.FS.unlink(`/logs/${fileName}`);
+
       return { fileName, content: csv };
     });
 
-    console.log("BB DECODER: csv files", csvFiles);
+    await this.BlackboxDecodeModule.FS.unlink("/logs/logfile.bbl");
+
     return csvFiles;
   }
 }
