@@ -1,41 +1,20 @@
 // @ts-ignore
 import { Decoder } from "./decoder";
 
+// define pyodie window property
+declare global {
+  interface Window {
+    loadPyodide: any;
+  }
+}
+
 export interface PIDAnalyzerHeaderInformation {
   fwType: "Betaflight" | "KISS" | "Raceflight";
   rollPID: [number, number, number];
   pitchPID: [number, number, number];
   yawPID: [number, number, number];
   maxThrottle: number;
-  tpaBreakpoint: number;
-}
-
-type GyroKeyPrefix = "gyroADC" | "ugyroADC" | "gyroData";
-
-type TripletSuffix = `[${0 | 1 | 2}]`;
-
-type GyroDataKey = `${GyroKeyPrefix}${TripletSuffix}`;
-
-type LogKey =
-  | "time (us)"
-  | `rcCommand${TripletSuffix}`
-  | "rcCommand[3]"
-  | `axisP${TripletSuffix}`
-  | `axisI${TripletSuffix}`
-  | `axisD${TripletSuffix}`
-  | `debug${TripletSuffix}`
-  | "debug[3]"
-  | GyroDataKey;
-
-export type PIDAnalyzerLogData = {
-  [key in LogKey]: number[];
-};
-
-// define pyodie window property
-declare global {
-  interface Window {
-    loadPyodide: any;
-  }
+  tpa_breakpoint: number;
 }
 
 export interface PIDAnalyzerTraceData {
@@ -58,10 +37,11 @@ export interface PIDAnalyzerTraceData {
   high_mask: number[];
 }
 
-export interface PIDAnalyzerTraces {
+export interface PIDAnalyzerResult {
   roll: PIDAnalyzerTraceData;
   pitch: PIDAnalyzerTraceData;
   yaw: PIDAnalyzerTraceData;
+  headdict: PIDAnalyzerHeaderInformation;
 }
 
 export class PIDAnalyzer {
@@ -69,10 +49,6 @@ export class PIDAnalyzer {
   private pythonCode?: string;
   private fileOrigin?: string;
   private decoder: Decoder;
-
-  private static PYODIDE_VERSION = "0.25.0";
-  // private static pyodideModuleUrl = `https://cdn.jsdelivr.net/pyodide/v${PIDAnalyzer.PYODIDE_VERSION}/full/pyodide.js`;
-  // private static fallbackPyodideIndexURL = `https://cdn.jsdelivr.net/pyodide/v${PIDAnalyzer.PYODIDE_VERSION}/full/`;
 
   private static REQUIREMENTS = {
     global: {
@@ -158,8 +134,6 @@ export class PIDAnalyzer {
 
     requirements.push(...this.requirementsKeyToArray("main"));
 
-    console.log("requirements", requirements);
-
     await pyodide.loadPackage("micropip");
     const micropip = pyodide.pyimport("micropip");
 
@@ -177,8 +151,6 @@ export class PIDAnalyzer {
   }
 
   public async init(fileOrigin: string) {
-    console.log("initiating PIDAnalyzer with fileOrigin", fileOrigin);
-
     this.fileOrigin = `${fileOrigin}/pid-analyzer`;
 
     this.decoder = new Decoder(`${fileOrigin}/blackbox-decoder`);
@@ -190,81 +162,82 @@ export class PIDAnalyzer {
       })(),
       this.loadCode(),
     ]);
-
-    console.log("initialisation is done!");
   }
 
   public async analyze(
-    logFile: File,
-    // headerInformation: PIDAnalyzerHeaderInformation,
-    // logData: PIDAnalyzerLogData
-  ): Promise<{
-    traces: PIDAnalyzerTraces;
-    headerInformation: PIDAnalyzerHeaderInformation;
-  }> {
-    await this.decoder.decodeBlackbox(logFile);
-
-    throw new Error('End of the road');
-
-    /*
-    const pyodide = this.getPyodide();
-
+    logFile: ArrayBuffer,
+    onStatus?: (status: string) => void
+  ): Promise<PIDAnalyzerResult[]> {
     if (!this.pythonCode) {
       throw new Error("pythonCode not loaded yet...");
     }
 
-    console.log("using", {
-      generalInformation: headerInformation,
-      logData,
-    });
+    const pyodide = this.getPyodide();
 
-    pyodide.FS.writeFile("data.json", JSON.stringify(logData), {
-      encoding: "utf8",
-    });
-    pyodide.FS.writeFile(
-      "headdict.json",
-      JSON.stringify({
-        ...headerInformation,
-        rollPID: `${headerInformation.rollPID[0]},${headerInformation.rollPID[1]},${headerInformation.rollPID[2]}`,
-        pitchPID: `${headerInformation.pitchPID[0]},${headerInformation.pitchPID[1]},${headerInformation.pitchPID[2]}`,
-        yawPID: `${headerInformation.yawPID[0]},${headerInformation.yawPID[1]},${headerInformation.yawPID[2]}`,
-      }),
-      {
-        encoding: "utf8",
-      }
-    );
+    console.log("PYTHON: writing .bbl to FS");
+    pyodide.FS.mkdir("/logs");
+    pyodide.FS.writeFile("/logs/flightlog.bbl", logFile);
 
-    // Pyodide is now ready to use...
-    pyodide.runPython(this.pythonCode);
+    pyodide.registerJsModule("blackbox_decoder", {
+      decode: async (path) => {
+        try {
+          console.log("BB DECODER: called from python", path);
+          const file = pyodide.FS.readFile(path);
+          const decodedFiles = await this.decoder.decodeBlackbox(file);
+          console.log("BB DECODER: decoding done", decodedFiles);
+          for (const decodedFile of decodedFiles) {
+            const bblFileStart = path.split('/').pop().replace('.bbl', '');
+            const csvIndex = decodedFile.fileName.split('.')[1];
 
-    const responsePitchRaw = pyodide.FS.readFile("response_pitch.json", {
-      encoding: "utf8",
-    });
-    const responsePitch = JSON.parse(responsePitchRaw);
+            const outputFileName = `/logs/tmp/${bblFileStart}.${csvIndex}.csv`;
 
-    const responseRollRaw = pyodide.FS.readFile("response_roll.json", {
-      encoding: "utf8",
-    });
-    const responseRoll = JSON.parse(responseRollRaw);
+            console.log(
+              "BB DECODER: writing file back to python",
+              outputFileName,
+            );
 
-    const responseYawRaw = pyodide.FS.readFile("response_yaw.json", {
-      encoding: "utf8",
-    });
-    const responseYaw = JSON.parse(responseYawRaw);
-
-    const headdictRaw = pyodide.FS.readFile("headdict.json", {
-      encoding: "utf8",
-    });
-    const headdict = JSON.parse(headdictRaw);
-
-    return {
-      headerInformation: headdict,
-      traces: {
-        roll: responseRoll,
-        pitch: responsePitch,
-        yaw: responseYaw,
+            await pyodide.FS.writeFile(
+              outputFileName,
+              decodedFile.content
+            );
+          }
+          console.log("BB DECODER: all files written back to python", await pyodide.FS.readdir("/logs/tmp"));
+        } catch (error) {
+          console.error("BB DECODER: error", error);
+        }
       },
-    };
-    */
+    });
+
+    pyodide.registerJsModule("js_status", {
+      reportStatusToJs: (status) => {
+        if (typeof onStatus === 'function') {
+          onStatus(status);
+        }
+      }
+    });
+
+    pyodide.setStdout(({ batched }) => console.log(`PYTHON >> ${batched}`));
+    pyodide.setStderr(({ batched }) => console.error(`PYTHON >> ${batched}`));
+
+    console.log("PYTHON: executing code...");
+    await pyodide.runPythonAsync(this.pythonCode);
+    console.log("PYTHON: code execution done...");
+
+    const resultFiles = await pyodide.FS.readdir("/logs/tmp");
+    console.log("PYTHON FS.readdir('/logs/tmp')", resultFiles);
+
+    const results: PIDAnalyzerResult[] = [];
+    await Promise.all(resultFiles.map(async (fileName: string) => {
+      if (fileName.startsWith(".")) {
+        return;
+      }
+
+      const content = pyodide.FS.readFile(`/logs/tmp/${fileName}`, {
+        encoding: "utf8",
+      });
+      results.push(JSON.parse(content));
+    }));
+
+    return results;
   }
 }

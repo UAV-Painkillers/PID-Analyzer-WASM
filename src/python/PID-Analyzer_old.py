@@ -1,15 +1,12 @@
 #!/usr/bin/env python
 import logging
-import os
-import subprocess
-import numpy as np
-from pandas import read_csv
-from scipy.interpolate import interp1d
-from scipy.ndimage.filters import gaussian_filter1d
-from scipy.optimize import minimize
 import json
-from blackbox_decoder import decode as blackbox_decoder_decode
-from js_status import reportStatusToJs
+import numpy as np
+from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter1d
+from scipy.optimize import minimize
+from os import walk
+import pandas as pd
 
 
 # ----------------------------------------------------------------------------------
@@ -35,7 +32,7 @@ class Trace:
     noise_framelen = 0.3    # window width for noise analysis
     noise_superpos = 16     # subsampling for noise analysis windows
 
-    def to_json_object(self):
+    def to_json(self):
         output = {
             'name': self.name,
             'gyro': self.gyro.tolist(),
@@ -59,7 +56,7 @@ class Trace:
         if self.high_mask.sum()>0:
             output['resp_high'] = self.resp_high[0].tolist()
 
-        return output
+        return json.dumps(output, indent=4, sort_keys=True)
 
     def __init__(self, data):
         self.data = data
@@ -133,6 +130,7 @@ class Trace:
         clipped/=clipped.max()
         return clipped
 
+
     def pid_in(self, pval, gyro, pidp):
         pidin = gyro + pval / (0.032029 * pidp)       # 0.032029 is P scaling factor from betaflight
         return pidin
@@ -141,6 +139,7 @@ class Trace:
         ### an estimated rate curve. not used.
         expoin = (np.exp((rcin - inmax) / rate) - np.exp((-rcin - inmax) / rate)) * outmax
         return expoin
+
 
     def calc_delay(self, time, trace1, trace2):
         ### minimizes trace1-trace2 by shifting trace1
@@ -191,6 +190,7 @@ class Trace:
             noise_sig=0.
         return toyout+noise_sig
 
+
     def equalize(self, time, data):
         ### equalizes time scale
         data_f = interp1d(time, data)
@@ -206,6 +206,7 @@ class Trace:
                   if len(self.data[key])==len(time):
                       self.data[key]= interp1d(time, self.data[key])(newtime)
         self.data['time']=newtime
+
 
     def stepcalc(self, time, duration):
         ### calculates frequency and resulting windowlength
@@ -297,6 +298,7 @@ class Trace:
 
         return {'hist2d_norm':hist2d_norm, 'hist2d':hist2d, 'throt_hist':throt_hist_avr,'throt_scale':throt_scale_avr}
 
+
     def stackspectrum(self, time, throttle, trace, window):
         ### calculates spectrogram from stack of windows against throttle.
         # slicing off last 2s to get rid of landing
@@ -363,10 +365,16 @@ class Trace:
         return (average, np.sqrt(variance))
 
 class CSV_log:
-    def __init__(self, fpath, name, headdict, noise_bounds):
-        # session number is inside fpath, fpath ends with xxx.<number>.csv where number is the session number
-        sessionNumber = fpath.split('.')[-2]
-        reportStatusToJs("Processing session " + sessionNumber + "...")
+    
+    #def __init__(self, data, headdict):
+    #    self.headdict = headdict
+#
+#        self.data = data
+#
+#        logging.info('Processing:')
+ #       self.traces = self.find_traces(self.data)
+    
+    def __init__(self, fpath, name, headdict):
         self.file = fpath
         self.name = name
         self.headdict = headdict
@@ -376,88 +384,14 @@ class CSV_log:
         logging.info('Processing:')
         self.traces = self.find_traces(self.data)
         self.roll, self.pitch, self.yaw = self.__analyze()
+        
 
-        # TODO: write results to FS, where the name is fpath but with a .json extension, so we need to replace the .csv with .json
-        jsonFileName = fpath.replace('.csv', '.json')
-        combinedJsonOutput = {
-            'roll': self.roll.to_json_object(),
-            'pitch': self.pitch.to_json_object(),
-            'yaw': self.yaw.to_json_object(),
-            'headdict': self.headdict
-        }
-        with open(jsonFileName, 'w') as jsonFile:
-            jsonFile.write(json.dumps(combinedJsonOutput, indent=4, sort_keys=True))
-        jsonFile.close()
-
-    def __analyze(self):
+    def analyze(self):
         analyzed = []
         for t in self.traces:
             logging.info(t['name'] + '...   ')
             analyzed.append(Trace(t))
-        return analyzed
-
-    def readcsv(self, fpath):
-        logging.info('Reading: Log '+str(self.headdict['logNum']))
-        datdic = {}
-        ### keycheck for 'usecols' only reads usefull traces, uncommend if needed
-        wanted =  ['time (us)',
-                   'rcCommand[0]', 'rcCommand[1]', 'rcCommand[2]', 'rcCommand[3]',
-                   'axisP[0]','axisP[1]','axisP[2]',
-                   'axisI[0]', 'axisI[1]', 'axisI[2]',
-                   'axisD[0]', 'axisD[1]','axisD[2]',
-                   'gyroADC[0]', 'gyroADC[1]', 'gyroADC[2]',
-                   'gyroData[0]', 'gyroData[1]', 'gyroData[2]',
-                   'ugyroADC[0]', 'ugyroADC[1]', 'ugyroADC[2]',
-                   #'accSmooth[0]','accSmooth[1]', 'accSmooth[2]',
-                   'debug[0]', 'debug[1]', 'debug[2]','debug[3]',
-                   #'motor[0]', 'motor[1]', 'motor[2]', 'motor[3]',
-                   #'energyCumulative (mAh)','vbatLatest (V)', 'amperageLatest (A)'
-                   ]
-        data = read_csv(fpath, header=0, skipinitialspace=1, usecols=lambda k: k in wanted, dtype=np.float64)
-        datdic.update({'time_us': data['time (us)'].values * 1e-6})
-        datdic.update({'throttle': data['rcCommand[3]'].values})
-
-        for i in ['0', '1', '2']:
-            datdic.update({'rcCommand' + i: data['rcCommand['+i+']'].values})
-            #datdic.update({'PID loop in' + i: data['axisP[' + i + ']'].values})
-            try:
-                datdic.update({'debug' + i: data['debug[' + i + ']'].values})
-            except:
-                logging.warning('No debug['+str(i)+'] trace found!')
-                datdic.update({'debug' + i: np.zeros_like(data['rcCommand[' + i + ']'].values)})
-
-            # get P trace (including case of missing trace)
-            try:
-                datdic.update({'PID loop in' + i: data['axisP[' + i + ']'].values})
-            except:
-                logging.warning('No P['+str(i)+'] trace found!')
-                datdic.update({'PID loop in' + i: np.zeros_like(data['rcCommand[' + i + ']'].values)})
-
-            try:
-                datdic.update({'d_err'+i: data['axisD[' + i+']'].values})
-            except:
-                logging.warning('No D['+str(i)+'] trace found!')
-                datdic.update({'d_err' + i: np.zeros_like(data['rcCommand[' + i + ']'].values)})
-
-            try:
-                datdic.update({'I_term'+i: data['axisI[' + i+']'].values})
-            except:
-                if i<2:
-                    logging.warning('No I['+str(i)+'] trace found!')
-                datdic.update({'I_term' + i: np.zeros_like(data['rcCommand[' + i + ']'].values)})
-
-            datdic.update({'PID sum' + i: datdic['PID loop in'+i]+datdic['I_term'+i]+datdic['d_err'+i]})
-            
-            if 'gyroADC[0]' in data.keys():
-                datdic.update({'gyroData' + i: data['gyroADC[' + i+']'].values})
-            elif 'gyroData[0]' in data.keys():
-                datdic.update({'gyroData' + i: data['gyroData[' + i+']'].values})
-            elif 'ugyroADC[0]' in data.keys():
-                datdic.update({'gyroData' + i: data['ugyroADC[' + i+']'].values})
-            else:
-                logging.warning('No gyro trace found!')
-        return datdic
-
+        return analyzed, self.headdict
 
     def find_traces(self, dat):
         time = self.data['time_us']
@@ -484,214 +418,232 @@ class CSV_log:
 
             else:
                 dic.update({'P':float((self.headdict[dic['name']+'PID']).split(',')[0])})
-                self.headdict.update({'tpa_percent': (float(self.headdict['tpa_breakpoint']) - 1000.) / 10.})
+                self.headdict.update({'tpa_percent': (float(self.headdict['tpaBreakpoint']) - 1000.) / 10.})
 
             dic.update({'throttle':throt})
 
         return traces
 
 
-class BB_log:
-    def __init__(self, log_file_path, noise_bounds):
-        self.name = "tmp"
-        self.log_file_path = log_file_path
-        self.tmp_dir = os.path.join(os.path.dirname(self.log_file_path), self.name)
-        if not os.path.isdir(self.tmp_dir):
-            os.makedirs(self.tmp_dir)
-        self.noise_bounds=noise_bounds
 
-    async def asyncInit(self):
-        self.loglist = await self.decode(self.log_file_path)
-        self.heads = self.beheader(self.loglist)
-        self.figs = self._csv_iter(self.heads)
+#     def find_traces_modified(self, dat):
+#         time = self.data['time']
+#         throttle = dat['rcCommand[3]']
 
-        self.deletejunk(self.loglist)
+#         throt = ((throttle - 1000.) / (float(self.headdict['maxThrottle']) - 1000.)) * 100.
 
-    def deletejunk(self, loglist):
-        for l in loglist:
-            os.remove(l)
-            os.remove(l[:-3]+'01.csv')
-            try:
-                os.remove(l[:-3]+'01.event')
-            except:
-                logging.warning('No .event file of '+l+' found.')
-        return
+#         traces = [{'name':'roll'},{'name':'pitch'},{'name':'yaw'}]
 
-    def _csv_iter(self, heads):
-        figs = []
-        for h in heads:
-            CSV_log(h['tempFile'][:-3]+'01.csv', self.name, h, self.noise_bounds)
-        return figs
+#         for i, dic in enumerate(traces):
+#             dic.update({'time':time})
+#             dic.update({'p_err':dat['axisP[' + str(i) + ']']})
+#             dic.update({'rcinput': dat['rcCommand[' + str(i) + ']']})
 
-    def beheader(self, loglist):
-        reportStatusToJs("Reading log file headers...")
-        heads = []
-        for i, bblog in enumerate(loglist):
-            log = open(os.path.join(self.tmp_dir, bblog), 'rb')
-            lines = log.readlines()
-            ### in case info is not provided by log, empty str is printed in plot
-            headsdict = {'tempFile'     :'',
-                         'dynThrottle' :'',
-                         'craftName'   :'',
-                         'fwType': '',
-                         'version'     :'',
-                         'date'        :'',
-                         'rcRate'      :'',
-                         'rcExpo'       :'',
-                         'rcYawExpo'    :'',
-                         'rcYawRate'   :'',
-                         'rates'        :'',
-                         'rollPID'     :'',
-                         'pitchPID'    :'',
-                         'yawPID'      :'',
-                         'deadBand'    :'',
-                         'yawDeadBand' :'',
-                         'logNum'       :'',
-                         'tpa_breakpoint':'0',
-                         'minThrottle':'',
-                         'maxThrottle': '',
-                         'tpa_percent':'',
-                         'dTermSetPoint':'',
-                         'vbatComp':'',
-                         'gyro_lpf':'',
-                         'gyro_lowpass_type':'',
-                         'gyro_lowpass_hz':'',
-                         'gyro_notch_hz':'',
-                         'gyro_notch_cutoff':'',
-                         'dterm_filter_type':'',
-                         'dterm_lpf_hz':'',
-                         'yaw_lpf_hz':'',
-                         'dterm_notch_hz':'',
-                         'dterm_notch_cutoff':'',
-                         'debug_mode':''
-                         }
-            ### different versions of fw have different names for the same thing.
-            translate_dic={'dynThrPID:':'dynThrottle',
-                         'Craft name:':'craftName',
-                         'Firmware type:':'fwType',
-                         'Firmware revision:':'version',
-                         'Firmware date:':'fwDate',
-                         'rcRate:':'rcRate', 'rc_rate:':'rcRate',
-                         'rcExpo:':'rcExpo', 'rc_expo:':'rcExpo',
-                         'rcYawExpo:':'rcYawExpo', 'rc_expo_yaw:':'rcYawExpo',
-                         'rcYawRate:':'rcYawRate', 'rc_rate_yaw:':'rcYawRate',
-                         'rates:':'rates',
-                         'rollPID:':'rollPID',
-                         'pitchPID:':'pitchPID',
-                         'yawPID:':'yawPID',
-                         ' deadband:':'deadBand',
-                         'yaw_deadband:':'yawDeadBand',
-                         'tpa_breakpoint:':'tpa_breakpoint',
-                         'minthrottle:':'minThrottle',
-                         'maxthrottle:':'maxThrottle',
-                         'dtermSetpointWeight:':'dTermSetPoint','dterm_setpoint_weight:':'dTermSetPoint',
-                         'vbat_pid_compensation:':'vbatComp','vbat_pid_gain:':'vbatComp',
-                         'gyro_lpf:':'gyro_lpf',
-                         'gyro_lowpass_type:':'gyro_lowpass_type',
-                         'gyro_lowpass_hz:':'gyro_lowpass_hz','gyro_lpf_hz:':'gyro_lowpass_hz',
-                         'gyro_notch_hz:':'gyro_notch_hz',
-                         'gyro_notch_cutoff:':'gyro_notch_cutoff',
-                         'dterm_filter_type:':'dterm_filter_type',
-                         'dterm_lpf_hz:':'dterm_lpf_hz',
-                         'yaw_lpf_hz:':'yaw_lpf_hz',
-                         'dterm_notch_hz:':'dterm_notch_hz',
-                         'dterm_notch_cutoff:':'dterm_notch_cutoff',
-                         'debug_mode:':'debug_mode'
-                         }
+#             if 'gyroADC[' + str(i) + ']' in dat:
+#                 dic.update({'gyro': dat['gyroADC[' + str(i) + ']']})
+#             elif 'gyroData[' + str(i) + ']' in dat:
+#                 dic.update({'gyro': dat['gyroData[' + str(i) + ']']})
+#             elif 'ugyroADC[' + str(i) + ']' in dat:
+#                 dic.update({'gyro': dat['ugyroADC[' + str(i) + ']']})
+#             else:
+#                 logging.warning('No gyro data found for axis %s', str(i))
 
-            headsdict['tempFile'] = bblog
-            headsdict['logNum'] = str(i)
-            ### check for known keys and translate to useful ones.
-            for raw_line in lines:
-                l = raw_line.decode('latin-1')
-                for k in translate_dic.keys():
-                    if k in l:
-                        val =l.split(':')[-1]
-                        headsdict.update({translate_dic[k]:val[:-1]})
+#             try:
+#                 dic.update({'d_err': dat['axisD[' + str(i) + ']']})
+#             except KeyError:
+#                 dic.update({'d_err': np.zeros_like(dat['rcCommand[' + str(i) + ']' ])})
 
-            heads.append(headsdict)
-        return heads
-
-    async def decode(self, fpath):
-        reportStatusToJs("Splitting log file into sessions...")
-
-        """Splits out one BBL per recorded session and converts each to CSV."""
-        with open(fpath, 'rb') as binary_log_view:
-            content = binary_log_view.read()
-
-        # The first line of the overall BBL file re-appears at the beginning
-        # of each recorded session.
-        try:
-          first_newline_index = content.index(str('\n').encode('utf8'))
-        except ValueError as e:
-            raise ValueError(
-                'No newline in %dB of log data from %r.'
-                % (len(content), fpath),
-                e)
-        firstline = content[:first_newline_index + 1]
-
-        split = content.split(firstline)
-        bbl_sessions = []
-        for i in range(len(split)):
-            path_root, path_ext = os.path.splitext(os.path.basename(fpath))
-            temp_path = os.path.join(
-                self.tmp_dir, '%s_temp%d%s' % (path_root, i, path_ext))
-            with open(temp_path, 'wb') as newfile:
-                newfile.write(firstline+split[i])
-            bbl_sessions.append(temp_path)
-
-        loglist = []
-        for bbl_session in bbl_sessions:
-            size_bytes = os.path.getsize(os.path.join(self.tmp_dir, bbl_session))
-            if size_bytes > LOG_MIN_BYTES:
-                try:
-                    # TODO: split this whole file into two
-                    # one for splitting the .bbl file into sessions
-                    # then decode them each using the blackbox decoder
-                    # and then call the other half of this python code to run the analysis on them
-
-                    reportStatusToJs("Decoding log number %r." % bbl_session)
-                    logging.info('Decoding %r.' % bbl_session)
-                    await blackbox_decoder_decode(bbl_session)
-                    reportStatusToJs("Decoding of log number %r complete." % bbl_session)
-                    logging.info('Decoding of %r complete.' % bbl_session)
-                    #msg = subprocess.check_call([self.blackbox_decode_bin_path, bbl_session])
-                    loglist.append(bbl_session)
-                except:
-                    logging.error(
-                        'Error in Blackbox_decode of %r' % bbl_session, exc_info=True)
-            else:
-                reportStatusToJs("Ignoring log number %r since it is too small." % bbl_session)
-                # There is often a small bogus session at the start of the file.
-                logging.warning(
-                    'Ignoring BBL session %r, %dB < %dB.'
-                    % (bbl_session, size_bytes, LOG_MIN_BYTES))
-                os.remove(bbl_session)
-
-        return loglist
+#             try:
+#                 dic.update({'debug': dat['debug[' + str(i) + ']']})
+#             except KeyError:
+#                 dic.update({'debug': np.zeros_like(time)})
 
 
-async def run_analysis(log_file_path, noise_bounds):
-    bbLog = BB_log(log_file_path, noise_bounds)
-    await bbLog.asyncInit()
-    reportStatusToJs("Analysis complete.")
-    logging.info('Analysis complete, showing plot. (Close plot to exit.)')
+#             dic.update({'PIDsum': dat['axisP[' + str(i) + ']']
+#                          + dat['axisI[' + str(i) + ']']
+#                          + dic['d_err']
+#             })
 
+#             if 'KISS' in self.headdict['fwType']:
+#                 dic.update({'P': 1.})
+#                 self.headdict.update({'tpa_percent': 0.})
+#             elif 'Raceflight' in self.headdict['fwType']:
+#                 dic.update({'P': 1.})
+#                 self.headdict.update({'tpa_percent': 0.})
 
-def strip_quotes(filepath):
-    """Strips single or double quotes and extra whitespace from a string."""
-    return filepath.strip().strip("'").strip('"')
+#             else:
+#                 dic.update({'P': float((self.headdict[dic['name'] + 'PID']).split(',')[0])})
+#                 self.headdict.update({'tpa_percent': (float(self.headdict['tpaBreakpoint']) - 1000.) / 10.})
 
+#             dic.update({'throttle':throt})
 
-def clean_path(path):
-    return os.path.abspath(os.path.expanduser(strip_quotes(path)))
+#         return traces
 
-reportStatusToJs("Starting analysis...")
-logging.basicConfig(
-    format='%(levelname)s %(asctime)s %(filename)s:%(lineno)s: %(message)s',
-    level=logging.INFO)
+# LOG_KEY_MAPPING = {
+#     "time": "time_us",
+#     "rcCommand[3]": "throttle",
+#     "rcCommand[0]": "rcCommand0",
+#     "rcCommand[1]": "rcCommand1",
+#     "rcCommand[2]": "rcCommand2",
+#     "debug[0]": "debug0",
+#     "debug[1]": "debug1",
+#     "debug[2]": "debug2",
+#     # TODO: calculate before mapping
+#     "PID sum0": "PID sum0",
+#     "PID sum1": "PID sum1",
+#     "PID sum2": "PID sum2",
+#     "axisP[0]": "PID loop in0",
+#     "axisP[1]": "PID loop in1",
+#     "axisP[2]": "PID loop in2",
+#     "axisD[0]": "d_err0",
+#     "axisD[1]": "d_err1",
+#     "axisD[2]": "d_err2",
+#     "axisI[0]": "I_term0",
+#     "axisI[1]": "I_term1",
+#     "axisI[2]": "I_term2",
+#     # TODO: calculate before mapping
+#     "gyroData0": "gyroData0",
+#     "gyroData1": "gyroData1",
+#     "gyroData2": "gyroData2",
+# }
 
-log_path = "/logs/flightlog.bbl"
-noise_bounds = [[1.,10.1],[1.,100.],[1.,100.],[0.,4.]]
+# def sumPID(P, I, D):
+#     max_length = max(len(P), len(I), len(D))
 
-await run_analysis(clean_path(log_path), noise_bounds)
+#     P = np.pad(P, (0, max_length - len(P)), 'constant')
+#     I = np.pad(I, (0, max_length - len(I)), 'constant')
+#     D = np.pad(D, (0, max_length - len(D)), 'constant')
+
+#     return P + I + D
+
+# def prepareIncomingData(incomingData):
+#     logging.info('Preparing incoming data...')
+
+#     logging.info("mapping gyro data to gyroData0, gyroData1, gyroData2")
+#     if 'gyroADC[0]' in incomingData.keys():
+#         incomingData.update({'gyroData0': incomingData['gyroADC[0]']})
+#         incomingData.update({'gyroData1': incomingData['gyroADC[1]']})
+#         incomingData.update({'gyroData2': incomingData['gyroADC[2]']})
+#     elif 'gyroData[0]' in incomingData.keys():
+#         incomingData.update({'gyroData0': incomingData['gyroData[0]']})
+#         incomingData.update({'gyroData1': incomingData['gyroData[1]']})
+#         incomingData.update({'gyroData2': incomingData['gyroData[2]']})
+#     elif 'ugyroADC[0]' in incomingData.keys():
+#         incomingData.update({'gyroData0': incomingData['ugyroADC[0]']})
+#         incomingData.update({'gyroData1': incomingData['ugyroADC[1]']})
+#         incomingData.update({'gyroData2': incomingData['ugyroADC[2]']})
+#     else:
+#         logging.warning('No gyro trace found!')
+
+#     logging.info("illing axisP")
+#     if not 'axisP[0]' in incomingData.keys():
+#         incomingData.update({'axisP[0]': np.zeros_like(incomingData['rcCommand[0]'])})
+#     if not 'axisP[1]' in incomingData.keys():
+#         incomingData.update({'axisP[1]': np.zeros_like(incomingData['rcCommand[1]'])})
+#     if not 'axisP[2]' in incomingData.keys():
+#         incomingData.update({'axisP[2]': np.zeros_like(incomingData['rcCommand[2]'])})
+
+#     logging.info("filling axisI")
+#     if not 'axisI[0]' in incomingData.keys():
+#         incomingData.update({'axisI[0]': np.zeros_like(incomingData['rcCommand[0]'])})
+#     if not 'axisI[1]' in incomingData.keys():
+#         incomingData.update({'axisI[1]': np.zeros_like(incomingData['rcCommand[1]'])})
+#     if not 'axisI[2]' in incomingData.keys():
+#         incomingData.update({'axisI[2]': np.zeros_like(incomingData['rcCommand[2]'])})
+
+#     logging.info("filling axisD")
+#     if not 'axisD[0]' in incomingData.keys():
+#         incomingData.update({'axisD[0]': np.zeros_like(incomingData['rcCommand[0]'])})
+#     if not 'axisD[1]' in incomingData.keys():
+#         incomingData.update({'axisD[1]': np.zeros_like(incomingData['rcCommand[1]'])})
+#     if not 'axisD[2]' in incomingData.keys():
+#         incomingData.update({'axisD[2]': np.zeros_like(incomingData['rcCommand[2]'])})
+
+#     logging.info("filling debug")
+#     if not 'debug[0]' in incomingData.keys():
+#         incomingData.update({'debug[0]': np.zeros_like(incomingData['rcCommand[0]'])})
+#     if not 'debug[1]' in incomingData.keys():
+#         incomingData.update({'debug[1]': np.zeros_like(incomingData['rcCommand[1]'])})
+#     if not 'debug[2]' in incomingData.keys():
+#         incomingData.update({'debug[2]': np.zeros_like(incomingData['rcCommand[2]'])})
+
+#     logging.info("summing PID 0")
+#     incomingData.update({'PID sum0': sumPID(incomingData['axisP[0]'], incomingData['axisI[0]'], incomingData['axisD[0]'])})
+#     logging.info("summing PID 1")
+#     incomingData.update({'PID sum1': sumPID(incomingData['axisP[1]'], incomingData['axisI[1]'], incomingData['axisD[1]'])})
+#     logging.info("summing PID 2")
+#     incomingData.update({'PID sum2': sumPID(incomingData['axisP[2]'], incomingData['axisI[2]'], incomingData['axisD[2]'])})
+
+#     mappedData = {}
+
+#     logging.info("mapping by key name")
+#     for key, value in LOG_KEY_MAPPING.items():
+#         if key in incomingData:
+#             mappedData[value] = np.array(incomingData[key])
+
+#     return mappedData
+
+if __name__ == "__old_main__":
+    logging.basicConfig(
+        format='%(levelname)s %(asctime)s %(filename)s:%(lineno)s: %(message)s',
+        level=logging.INFO)
+    
+    logging.info('Reading headdict.json...')
+    
+    with open('headdict.json', 'r') as f:
+        headdict = json.load(f)
+    f.close()
+
+    logging.info('Reading data.json...')
+
+    with open('data.json', 'r') as f:
+        data = json.load(f)
+    f.close()
+
+    logging.info('Converting data to numpy arrays...')
+
+    mappedData = prepareIncomingData(data)
+
+    logging.info('Running PID_Analyzer...')
+    run(mappedData, headdict)
+
+    logging.info('PID_Analyzer finished')
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        format='%(levelname)s %(asctime)s %(filename)s:%(lineno)s: %(message)s',
+        level=logging.INFO)
+    
+    # read directory /logs and find all file names ending with .csv
+    # for each file, run the PID_Analyzer
+
+    logging.info("Starting PID_Analyzer..., reading /logs to find .csv files")
+    filenames = next(walk("/logs"), (None, None, []))[2]
+
+    for file in filenames:
+        if not file.endswith('.csv'):
+            continue
+
+        path = os.path.join("/logs", file)  # absolute path to the csv files in /logs directory, then convert it into a list of dictionaries for PIDAnalyzer to process data
+        
+        parsed = CSV_log(path, headdict)
+
+        with open(file + '_response_yaw.json', 'w', encoding='utf-8') as f:
+            f.write(yaw.to_json())
+        f.close()
+
+        with open(file + '_response_roll.json', 'w', encoding='utf-8') as f:
+            f.write(roll.to_json())
+        f.close()
+
+        with open(file + '_response_pitch.json', 'w', encoding='utf-8') as f:
+            f.write(pitch.to_json())
+        f.close()
+
+        with open(file + '_headdict.json', 'w', encoding='utf-8') as f:
+            f.write(json.dumps(headdict, indent=4, sort_keys=True))
+        f.close()
+
+        logging.info('Finished ' + file)
+
+    logging.info('PID_Analyzer finished')
