@@ -17,6 +17,16 @@ export interface PIDAnalyzerHeaderInformation {
   tpa_breakpoint: number;
 }
 
+export interface PIDAnalyzerTraceNoiseData {
+  throt_hist_avr: number[];
+  throt_axis: number[];
+  freq_axis: number[];
+  hist2d_norm: number[];
+  hist2d_sm: number[];
+  hist2d: number[];
+  max: number;
+}
+
 export interface PIDAnalyzerTraceData {
   name: string;
   gyro: number[];
@@ -35,6 +45,9 @@ export interface PIDAnalyzerTraceData {
   resp_low: [number[]];
   resp_high?: [number[]];
   high_mask: number[];
+  noise_gyro: PIDAnalyzerTraceNoiseData;
+  noise_d: PIDAnalyzerTraceNoiseData;
+  noise_debug: PIDAnalyzerTraceNoiseData;
 }
 
 export interface PIDAnalyzerResult {
@@ -42,6 +55,10 @@ export interface PIDAnalyzerResult {
   pitch: PIDAnalyzerTraceData;
   yaw: PIDAnalyzerTraceData;
   headdict: PIDAnalyzerHeaderInformation;
+}
+
+export enum States {
+  STATE_READING_HEADER,
 }
 
 export class PIDAnalyzer {
@@ -166,7 +183,7 @@ export class PIDAnalyzer {
 
   public async analyze(
     logFile: ArrayBuffer,
-    onStatus?: (status: string) => void
+    onStatus?: (status: string, payload?: any) => void
   ): Promise<PIDAnalyzerResult[]> {
     if (!this.pythonCode) {
       throw new Error("pythonCode not loaded yet...");
@@ -174,12 +191,14 @@ export class PIDAnalyzer {
 
     const pyodide = this.getPyodide();
 
-    const {exists: logFileExists} = await pyodide.FS.analyzePath("/logs/flightlog.bbl");
+    const { exists: logFileExists } = await pyodide.FS.analyzePath(
+      "/logs/flightlog.bbl"
+    );
     if (logFileExists) {
       await pyodide.FS.unlink("/logs/flightlog.bbl");
     }
 
-    const {exists: logsDirExists} = await pyodide.FS.analyzePath("/logs");
+    const { exists: logsDirExists } = await pyodide.FS.analyzePath("/logs");
     if (!logsDirExists) {
       await pyodide.FS.mkdir("/logs");
     }
@@ -191,27 +210,28 @@ export class PIDAnalyzer {
           const file = pyodide.FS.readFile(path);
           const decodedFiles = await this.decoder.decodeBlackbox(file);
           for (const decodedFile of decodedFiles) {
-            const bblFileStart = path.split('/').pop().replace('.bbl', '');
-            const csvIndex = decodedFile.fileName.split('.')[1];
+            const bblFileStart = path.split("/").pop().replace(".bbl", "");
+            const csvIndex = decodedFile.fileName.split(".")[1];
 
             const outputFileName = `/logs/tmp/${bblFileStart}.${csvIndex}.csv`;
 
-            await pyodide.FS.writeFile(
-              outputFileName,
-              decodedFile.content
-            );
+            await pyodide.FS.writeFile(outputFileName, decodedFile.content);
           }
-        } catch (error) {
-        }
+        } catch (error) {}
       },
     });
 
     pyodide.registerJsModule("js_status", {
-      reportStatusToJs: (status) => {
-        if (typeof onStatus === 'function') {
-          onStatus(status);
+      reportStatusToJs: async (status, payloadProxy) => {
+        let payload = payloadProxy;
+        if (payloadProxy && typeof payloadProxy.toJs === "function") {
+          payload = payloadProxy.toJs();
         }
-      }
+
+        if (typeof onStatus === "function") {
+          onStatus(status, payload);
+        }
+      },
     });
 
     await pyodide.runPythonAsync(this.pythonCode);
@@ -219,19 +239,21 @@ export class PIDAnalyzer {
     const resultFiles = await pyodide.FS.readdir("/logs/tmp");
 
     const results: PIDAnalyzerResult[] = [];
-    await Promise.all(resultFiles.map(async (fileName: string) => {
-      if (fileName.startsWith(".")) {
-        return;
-      }
+    await Promise.all(
+      resultFiles.map(async (fileName: string) => {
+        if (fileName.startsWith(".")) {
+          return;
+        }
 
-      const content = pyodide.FS.readFile(`/logs/tmp/${fileName}`, {
-        encoding: "utf8",
-      });
+        const content = pyodide.FS.readFile(`/logs/tmp/${fileName}`, {
+          encoding: "utf8",
+        });
 
-      await pyodide.FS.unlink(`/logs/tmp/${fileName}`);
+        await pyodide.FS.unlink(`/logs/tmp/${fileName}`);
 
-      results.push(JSON.parse(content));
-    }));
+        results.push(JSON.parse(content));
+      })
+    );
 
     return results;
   }

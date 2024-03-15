@@ -54,6 +54,34 @@ class Trace:
             'resp_low': [
                 self.resp_low[0].tolist(),
             ],
+            'high_mask': self.high_mask.tolist(),
+            'noise_gyro': {
+                'throt_hist_avr': self.noise_gyro['throt_hist_avr'].tolist(),
+                'throt_axis': self.noise_gyro['throt_axis'].tolist(),
+                'freq_axis': self.noise_gyro['freq_axis'].tolist(),
+                'hist2d_norm': self.noise_gyro['hist2d_norm'].tolist(),
+                'hist2d_sm': self.noise_gyro['hist2d_sm'].tolist(),
+                'hist2d': self.noise_gyro['hist2d'].tolist(),
+                'max': self.noise_gyro['max']
+            },
+            'noise_d': {
+                'throt_hist_avr': self.noise_d['throt_hist_avr'].tolist(),
+                'throt_axis': self.noise_d['throt_axis'].tolist(),
+                'freq_axis': self.noise_d['freq_axis'].tolist(),
+                'hist2d_norm': self.noise_d['hist2d_norm'].tolist(),
+                'hist2d_sm': self.noise_d['hist2d_sm'].tolist(),
+                'hist2d': self.noise_d['hist2d'].tolist(),
+                'max': self.noise_d['max']
+            },
+            'noise_debug': {
+                'throt_hist_avr': self.noise_debug['throt_hist_avr'].tolist(),
+                'throt_axis': self.noise_debug['throt_axis'].tolist(),
+                'freq_axis': self.noise_debug['freq_axis'].tolist(),
+                'hist2d_norm': self.noise_debug['hist2d_norm'].tolist(),
+                'hist2d_sm': self.noise_debug['hist2d_sm'].tolist(),
+                'hist2d': self.noise_debug['hist2d'].tolist(),
+                'max': self.noise_debug['max']
+            },
         }
 
         if self.high_mask.sum()>0:
@@ -364,20 +392,22 @@ class Trace:
 
 class CSV_log:
     def __init__(self, fpath, name, headdict, noise_bounds):
-        # session number is inside fpath, fpath ends with xxx.<number>.csv where number is the session number
-        sessionNumber = fpath.split('.')[-2]
-        reportStatusToJs("Processing session " + sessionNumber + "...")
         self.file = fpath
         self.name = name
         self.headdict = headdict
 
+    async def asyncInit(self):
+        await reportStatusToJs("READING_DECODED_SUB_BBL_START")
         self.data = self.readcsv(self.file)
+        await reportStatusToJs("READING_DECODED_SUB_BBL_COMPLETE")
 
-        logging.info('Processing:')
         self.traces = self.find_traces(self.data)
+        await reportStatusToJs("RUNNING_PID_ANALYSIS_ON_SUB_BBL_START")
         self.roll, self.pitch, self.yaw = self.__analyze()
+        await reportStatusToJs("RUNNING_PID_ANALYSIS_ON_SUB_BBL_COMPLETE")
 
-        # TODO: write results to FS, where the name is fpath but with a .json extension, so we need to replace the .csv with .json
+        await reportStatusToJs("SAVING_PID_ANALYSIS_RESULTS_FROM_SUB_BBL_START")
+        fpath = self.file
         jsonFileName = fpath.replace('.csv', '.json')
         combinedJsonOutput = {
             'roll': self.roll.to_json_object(),
@@ -388,6 +418,7 @@ class CSV_log:
         with open(jsonFileName, 'w') as jsonFile:
             jsonFile.write(json.dumps(combinedJsonOutput, indent=4, sort_keys=True))
         jsonFile.close()
+        await reportStatusToJs("SAVING_PID_ANALYSIS_RESULTS_FROM_SUB_BBL_COMPLETE")
 
     def __analyze(self):
         analyzed = []
@@ -501,32 +532,63 @@ class BB_log:
         self.noise_bounds=noise_bounds
 
     async def asyncInit(self):
-        self.loglist = await self.decode(self.log_file_path)
-        self.heads = self.beheader(self.loglist)
-        self.figs = self._csv_iter(self.heads)
+        await reportStatusToJs("PROCESSING_MAIN_BBL")
 
+        self.loglist = await self.decode(self.log_file_path)
+        self.heads = await self.beheader(self.loglist)
+        self.figs = await self._csv_iter(self.heads)
         self.deletejunk(self.loglist)
 
-    def deletejunk(self, loglist):
-        for l in loglist:
-            os.remove(l)
-            os.remove(l[:-3]+'01.csv')
-            try:
-                os.remove(l[:-3]+'01.event')
-            except:
-                logging.warning('No .event file of '+l+' found.')
-        return
+    async def decode(self, fpath):
+        """Splits out one BBL per recorded session and converts each to CSV."""
+        with open(fpath, 'rb') as binary_log_view:
+            content = binary_log_view.read()
 
-    def _csv_iter(self, heads):
-        figs = []
-        for h in heads:
-            CSV_log(h['tempFile'][:-3]+'01.csv', self.name, h, self.noise_bounds)
-        return figs
+        # The first line of the overall BBL file re-appears at the beginning
+        # of each recorded session.
+        try:
+          first_newline_index = content.index(str('\n').encode('utf8'))
+        except ValueError as e:
+            raise ValueError(
+                'No newline in %dB of log data from %r.'
+                % (len(content), fpath),
+                e)
+        firstline = content[:first_newline_index + 1]
 
-    def beheader(self, loglist):
-        reportStatusToJs("Reading log file headers...")
+        split = content.split(firstline)
+        bbl_sessions = []
+        for i in range(len(split)):
+            path_root, path_ext = os.path.splitext(os.path.basename(fpath))
+            temp_path = os.path.join(
+                self.tmp_dir, '%s_temp%d%s' % (path_root, i, path_ext))
+            with open(temp_path, 'wb') as newfile:
+                newfile.write(firstline+split[i])
+            bbl_sessions.append(temp_path)
+
+        await reportStatusToJs("DECODING_SUB_BBLS", len(bbl_sessions))
+
+        loglist = []
+        for bbl_session in bbl_sessions:
+            size_bytes = os.path.getsize(os.path.join(self.tmp_dir, bbl_session))
+            if size_bytes > LOG_MIN_BYTES:
+                try:
+                    await reportStatusToJs("DECODE_SUB_BBL_START")
+                    await blackbox_decoder_decode(bbl_session)
+                    await reportStatusToJs("DECODE_SUB_BBL_COMPLETE")
+                    loglist.append(bbl_session)
+                except:
+                    logging.error(
+                        'Error in Blackbox_decode of %r' % bbl_session, exc_info=True)
+            else:
+                await reportStatusToJs("DECODE_SUB_BBL_SKIPPED")
+                os.remove(bbl_session)
+
+        return loglist
+
+    async def beheader(self, loglist):
         heads = []
         for i, bblog in enumerate(loglist):
+            await reportStatusToJs("READING_HEADERS_FROM_SUB_BBL_START")
             log = open(os.path.join(self.tmp_dir, bblog), 'rb')
             lines = log.readlines()
             ### in case info is not provided by log, empty str is printed in plot
@@ -610,72 +672,31 @@ class BB_log:
                         headsdict.update({translate_dic[k]:val[:-1]})
 
             heads.append(headsdict)
+            await reportStatusToJs("READING_HEADERS_FROM_SUB_BBL_COMPLETE")
         return heads
 
-    async def decode(self, fpath):
-        reportStatusToJs("Splitting log file into sessions...")
+    async def _csv_iter(self, heads):
+        figs = []
+        for h in heads:
+            log = CSV_log(h['tempFile'][:-3]+'01.csv', self.name, h, self.noise_bounds)
+            await log.asyncInit()
+        return figs
 
-        """Splits out one BBL per recorded session and converts each to CSV."""
-        with open(fpath, 'rb') as binary_log_view:
-            content = binary_log_view.read()
-
-        # The first line of the overall BBL file re-appears at the beginning
-        # of each recorded session.
-        try:
-          first_newline_index = content.index(str('\n').encode('utf8'))
-        except ValueError as e:
-            raise ValueError(
-                'No newline in %dB of log data from %r.'
-                % (len(content), fpath),
-                e)
-        firstline = content[:first_newline_index + 1]
-
-        split = content.split(firstline)
-        bbl_sessions = []
-        for i in range(len(split)):
-            path_root, path_ext = os.path.splitext(os.path.basename(fpath))
-            temp_path = os.path.join(
-                self.tmp_dir, '%s_temp%d%s' % (path_root, i, path_ext))
-            with open(temp_path, 'wb') as newfile:
-                newfile.write(firstline+split[i])
-            bbl_sessions.append(temp_path)
-
-        loglist = []
-        for bbl_session in bbl_sessions:
-            size_bytes = os.path.getsize(os.path.join(self.tmp_dir, bbl_session))
-            if size_bytes > LOG_MIN_BYTES:
-                try:
-                    # TODO: split this whole file into two
-                    # one for splitting the .bbl file into sessions
-                    # then decode them each using the blackbox decoder
-                    # and then call the other half of this python code to run the analysis on them
-
-                    reportStatusToJs("Decoding log number %r." % bbl_session)
-                    logging.info('Decoding %r.' % bbl_session)
-                    await blackbox_decoder_decode(bbl_session)
-                    reportStatusToJs("Decoding of log number %r complete." % bbl_session)
-                    logging.info('Decoding of %r complete.' % bbl_session)
-                    #msg = subprocess.check_call([self.blackbox_decode_bin_path, bbl_session])
-                    loglist.append(bbl_session)
-                except:
-                    logging.error(
-                        'Error in Blackbox_decode of %r' % bbl_session, exc_info=True)
-            else:
-                reportStatusToJs("Ignoring log number %r since it is too small." % bbl_session)
-                # There is often a small bogus session at the start of the file.
-                logging.warning(
-                    'Ignoring BBL session %r, %dB < %dB.'
-                    % (bbl_session, size_bytes, LOG_MIN_BYTES))
-                os.remove(bbl_session)
-
-        return loglist
+    def deletejunk(self, loglist):
+        for l in loglist:
+            os.remove(l)
+            os.remove(l[:-3]+'01.csv')
+            try:
+                os.remove(l[:-3]+'01.event')
+            except:
+                logging.warning('No .event file of '+l+' found.')
+        return
 
 
 async def run_analysis(log_file_path, noise_bounds):
     bbLog = BB_log(log_file_path, noise_bounds)
     await bbLog.asyncInit()
-    reportStatusToJs("Analysis complete.")
-    logging.info('Analysis complete, showing plot. (Close plot to exit.)')
+    await reportStatusToJs("PID_ANALYSIS_COMPLETE")
 
 
 def strip_quotes(filepath):
@@ -686,7 +707,6 @@ def strip_quotes(filepath):
 def clean_path(path):
     return os.path.abspath(os.path.expanduser(strip_quotes(path)))
 
-reportStatusToJs("Starting analysis...")
 logging.basicConfig(
     format='%(levelname)s %(asctime)s %(filename)s:%(lineno)s: %(message)s',
     level=logging.INFO)
