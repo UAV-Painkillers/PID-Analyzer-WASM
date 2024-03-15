@@ -15,6 +15,7 @@ export interface PIDAnalyzerHeaderInformation {
   yawPID: [number, number, number];
   maxThrottle: number;
   tpa_breakpoint: number;
+  tpa_percent: number;
 }
 
 export interface PIDAnalyzerTraceNoiseData {
