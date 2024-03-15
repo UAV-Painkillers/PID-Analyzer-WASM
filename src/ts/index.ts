@@ -23,7 +23,7 @@ export interface PIDAnalyzerTraceNoiseData {
   throt_axis: number[];
   freq_axis: number[];
   hist2d_norm: number[];
-  hist2d_sm: number[];
+  hist2d_sm: number[][];
   hist2d: number[];
   max: number;
 }
