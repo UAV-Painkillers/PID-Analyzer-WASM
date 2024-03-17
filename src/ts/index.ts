@@ -49,6 +49,7 @@ export interface PIDAnalyzerTraceData {
   noise_gyro: PIDAnalyzerTraceNoiseData;
   noise_d: PIDAnalyzerTraceNoiseData;
   noise_debug: PIDAnalyzerTraceNoiseData;
+  filter_trans: number[];
 }
 
 export interface PIDAnalyzerResult {
