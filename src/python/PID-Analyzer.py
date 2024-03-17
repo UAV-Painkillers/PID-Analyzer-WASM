@@ -82,6 +82,7 @@ class Trace:
                 'hist2d': self.noise_debug['hist2d'].tolist(),
                 'max': self.noise_debug['max']
             },
+            'filter_trans': self.filter_trans.tolist(),
         }
 
         if self.high_mask.sum()>0:
