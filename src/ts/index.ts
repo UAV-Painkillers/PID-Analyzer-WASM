@@ -27,16 +27,9 @@ export class PIDAnalyzer {
     this.decoder = new Decoder(`${this.fileOrigin}/blackbox-decoder`);
   }
 
-  private async loadCode() {
-    this.pythonCode = `${/* DO NOT REMOVE ME: START OF PYTHON CODE */ ""}
-        ${await fetch("./PID-Analyzer.py").then((response) => response.text())}
-        ${/* DO NOT REMOVE ME: END OF PYTHON CODE */ ""}`.trim();
-  }
-
   public async init() {
     await Promise.all([
       this.pyodideRuntime.init(),
-      this.loadCode(),
       this.pythonAnalyzer.init(),
     ]);
   }
