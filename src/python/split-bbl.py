@@ -1,25 +1,12 @@
+#!/usr/bin/env python
+import logging
 import os
-from js_status import reportStatusToJs # noqa
-from blackbox_decoder import decode as blackbox_decoder_decode # noqa
+from js_status import reportStatusToJs
 import json
 
 LOG_MIN_BYTES = 500000
 
 async def split_bbl(bbl_path, out_path):
-    """
-    Split the BBL file into multiple sub-files based on recorded sessions.
-
-    Args:
-        bbl_path (str): The path to the BBL file.
-        out_path (str): The output directory where the sub-files will be saved.
-
-    Raises:
-        ValueError: If there is no newline character in the BBL file.
-
-    Returns:
-        None
-    """
-
     await reportStatusToJs("SPLITTING BBL")
     with open(bbl_path, 'rb') as binary_log_view:
         content = binary_log_view.read()
@@ -49,16 +36,6 @@ async def split_bbl(bbl_path, out_path):
     return sub_bbl_file_names
 
 async def get_log_header(sub_bbl_filename_list):
-    """
-    Reads the headers from a list of sub BBL files and returns a list of dictionaries containing the header information.
-
-    Parameters:
-    - sub_bbl_filename_list (list): A list of sub BBL file names.
-
-    Returns:
-    - all_header (list): A list of dictionaries, where each dictionary contains the header information for a sub BBL file.
-
-    """
     await reportStatusToJs("READING_HEADERS_START", len(sub_bbl_filename_list))
 
     all_header = []
@@ -165,23 +142,23 @@ async def get_log_header(sub_bbl_filename_list):
     return all_header
 
 async def run():
-    """
-    Run the splitting and decoding process.
-
-    Args:
-        None
-
-    Returns:
-        None
-    """
     bbl_path = "/log.bbl"
     out_path = "/splits"
+
+    logging.basicConfig(
+    format='%(levelname)s %(asctime)s %(filename)s:%(lineno)s: %(message)s',
+    level=logging.INFO)
+
+    logging.info('Decoding BBL file: %s', bbl_path)
+
+    os.makedirs(out_path, exist_ok=True)
+
     await reportStatusToJs("RUNNING")
     sub_bbl_filenames = await split_bbl(bbl_path, out_path)
     all_sub_bbl_headers = await get_log_header(sub_bbl_filenames)
 
     combined_json_output = []
-    for header, index in all_sub_bbl_headers:
+    for index, header in enumerate(all_sub_bbl_headers):
         combined_json_output.append({
             'header': header,
             'bbl_filename': sub_bbl_filenames[index],
@@ -194,4 +171,4 @@ async def run():
 
     await reportStatusToJs("COMPLETE")
 
-await run() # noqa
+await run()

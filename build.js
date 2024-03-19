@@ -63,10 +63,7 @@ const main = async () => {
   };
   await copyFiles(typescriptSrcDir, distTsDir);
 
-  let codeLoader = await fs.promises.readFile(
-    typescriptCodeLoaderPath,
-    "utf8"
-  );
+  let codeLoader = await fs.promises.readFile(typescriptCodeLoaderPath, "utf8");
 
   // determine start and end of python code fetching snippet
   // example: '${/* GEN_PY_CODE<PID-Analyzer.py> */""}';
@@ -88,8 +85,10 @@ const main = async () => {
     const pythonCode = (
       await fs.promises.readFile(path.join(pythonSrcDir, fileName), "utf8")
     )
-      .split("\n")
-      .join("\\n");
+      .split("`")
+      .join("\\`")
+      .split("\\n")
+      .join("\\\\n");
     codeLoader =
       codeLoader.substring(0, indexOfPlaceHolderStart) +
       pythonCode +
@@ -109,7 +108,7 @@ const main = async () => {
   execSync("npx webpack", { cwd: __dirname, stdio: "inherit" });
 
   // delete dist-ts
-  fs.rmSync(distTsDir, { recursive: true });
+  // fs.rmSync(distTsDir, { recursive: true });
 };
 
 main().catch(console.error);

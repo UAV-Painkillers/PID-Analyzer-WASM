@@ -1,10 +1,13 @@
-from js_status import reportStatusToJs # noqa
+#!/usr/bin/env python
+import logging
+from js_status import reportStatusToJs
 import json
 import numpy as np
 from pandas import read_csv
 from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter1d
 from scipy.optimize import minimize
+import os
 
 class Trace:
     framelen = 1.           # length of each single frame over which to compute response
@@ -376,30 +379,28 @@ class CSV_log:
         await reportStatusToJs("READING_DECODED_SUB_BBL_COMPLETE")
 
         self.traces = self.find_traces(self.data)
-        await reportStatusToJs("RUNNING_PID_ANALYSIS_ON_SUB_BBL_START")
-        self.roll, self.pitch, self.yaw = self.__analyze()
-        await reportStatusToJs("RUNNING_PID_ANALYSIS_ON_SUB_BBL_COMPLETE")
-
-        await reportStatusToJs("SAVING_PID_ANALYSIS_RESULTS_FROM_SUB_BBL_START")
-        fpath = self.file
-        combined_json_output = {
-            'roll': self.roll.to_json_object(),
-            'pitch': self.pitch.to_json_object(),
-            'yaw': self.yaw.to_json_object(),
-            'headdict': self.headdict
-        }
-        with open(self.result_path, 'w', encoding='utf-8') as json_file:
-            json_file.write(json.dumps(combined_json_output, indent=4, sort_keys=True))
+        await reportStatusToJs("WRITE_HEADDICT_TO_JSON_START")
+        headdict_out_path = self.result_path + "/headdict.json"
+        with open(headdict_out_path, 'w', encoding='utf-8') as json_file:
+            json.dump(self.headdict, json_file, ensure_ascii=False, indent=4)
         json_file.close()
+        await reportStatusToJs("WRITE_HEADDICT_TO_JSON_COMPLETE")
 
-        await reportStatusToJs("SAVING_PID_ANALYSIS_RESULTS_FROM_SUB_BBL_COMPLETE")
+        await reportStatusToJs("ANALYZE_PID_START")
+        await self.__analyze()
+        await reportStatusToJs("ANALYZE_PID_COMPLETE")
 
-    def __analyze(self):
-        analyzed = []
+    async def __analyze(self):
         for t in self.traces:
             logging.info(t['name'] + '...   ')
-            analyzed.append(Trace(t))
-        return analyzed
+            await reportStatusToJs("SAVING_ANALYSIS_TRACE_RESULT_START")
+            trace = Trace(t)
+            trace_out_path = self.result_path + "/trace_" + t['name'] + ".json"
+            with open(trace_out_path, 'w', encoding='utf-8') as json_file:
+                json.dump(trace.to_json_object(), json_file, ensure_ascii=False, indent=4)
+            json_file.close()
+            await reportStatusToJs("SAVING_ANALYSIS_TRACE_RESULT_COMPLETE")
+            del trace
 
     def readcsv(self, fpath):
         logging.info('Reading: Log '+str(self.headdict['logNum']))
@@ -499,7 +500,14 @@ class CSV_log:
 async def run():
     log_csv_path = "/log.csv"
     log_header_path = "/log-header.json"
-    result_path = "/result.json"
+    result_path = "/results"
+
+    logging.basicConfig(
+    format='%(levelname)s %(asctime)s %(filename)s:%(lineno)s: %(message)s',
+    level=logging.INFO)
+
+    if not os.path.exists(result_path):
+        os.makedirs(result_path)
 
     # read headdict from log_header.json
     with open(log_header_path, 'r', encoding='utf-8') as header_file:
@@ -511,4 +519,4 @@ async def run():
 
     del log
 
-await run() # noqa
+await run()
