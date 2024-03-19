@@ -1,38 +1,25 @@
 // @ts-ignore
 import { Decoder } from "./decoder";
-import { PyodideRuntime } from "./pyodide";
 import { PythonAnalyzer } from "./python-analyser";
 import type {
   DecoderResult, PIDAnalyzerResult,
 } from "./types";
 export * from "./types";
 
-// define pyodie window property
-declare global {
-  interface Window {
-    loadPyodide: any;
-  }
-}
-
 export class PIDAnalyzer {
   private pythonCode: string;
   private fileOrigin?: string;
   private decoder: Decoder;
-  private pyodideRuntime: PyodideRuntime;
   private pythonAnalyzer: PythonAnalyzer;
 
   public constructor(fileOrigin: string) {
     this.fileOrigin = `${fileOrigin}/pid-analyzer`;
-    this.pyodideRuntime = new PyodideRuntime(`${this.fileOrigin}/pid-analyzer`);
-    this.pythonAnalyzer = new PythonAnalyzer(`${this.fileOrigin}/pid-analyzer`);
+    this.pythonAnalyzer = new PythonAnalyzer(this.fileOrigin);
     this.decoder = new Decoder(`${this.fileOrigin}/blackbox-decoder`);
   }
 
   public async init() {
-    await Promise.all([
-      this.pyodideRuntime.init(),
-      this.pythonAnalyzer.init(),
-    ]);
+    await this.pythonAnalyzer.init(),
   }
 
   public async decodeMainBBL(logFile: ArrayBuffer): Promise<DecoderResult[]> {
