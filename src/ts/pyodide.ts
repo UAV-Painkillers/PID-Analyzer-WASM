@@ -1,5 +1,11 @@
 export type PyodideStatusListener = (status: string, payload?: any) => void;
 
+declare global {
+  interface Window {
+    loadPyodide: (options: { indexURL?: string }) => Promise<any>;
+  }
+}
+
 export class PyodideRuntime {
   private pyodide: any;
   private fileOrigin?: string;
