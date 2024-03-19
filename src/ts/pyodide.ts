@@ -38,6 +38,17 @@ export class PyodideRuntime {
       this.pyodide = await window.loadPyodide({
         indexURL,
       });
+
+      this.pyodide.registerJsModule("js_status", {
+        reportStatusToJs: async (status, payloadProxy) => {
+          let payload = payloadProxy;
+          if (payloadProxy && typeof payloadProxy.toJs === "function") {
+            payload = payloadProxy.toJs();
+          }
+
+          this.broadCastStatus(status, payload);
+        },
+      });
     }
 
     return this.pyodide;
@@ -104,18 +115,8 @@ export class PyodideRuntime {
   }
 
   public async init() {
-    await Promise.all([this.loadPyodide(), this.loadPackages()]);
-
-    this.pyodide.registerJsModule("js_status", {
-      reportStatusToJs: async (status, payloadProxy) => {
-        let payload = payloadProxy;
-        if (payloadProxy && typeof payloadProxy.toJs === "function") {
-          payload = payloadProxy.toJs();
-        }
-
-        this.broadCastStatus(status, payload);
-      },
-    });
+    await this.loadPyodide()
+    await this.loadPackages();
   }
 
   public get FS() {
