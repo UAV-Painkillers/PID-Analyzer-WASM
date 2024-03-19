@@ -5,6 +5,7 @@ import { PythonAnalyzer } from "./python-analyser";
 import type {
   DecoderResult, PIDAnalyzerResult,
 } from "./types";
+export * from "./types";
 
 // define pyodie window property
 declare global {
