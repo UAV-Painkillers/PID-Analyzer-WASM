@@ -39,48 +39,23 @@ export class Decoder {
     });
   }
 
-  public async decodeBlackbox(blackbox: ArrayBuffer) {
+  public async decodeBlackbox(blackbox: ArrayBuffer): Promise<string> {
     await this.load();
 
-    const {exists: logFileExists} = await this.BlackboxDecodeModule.FS.analyzePath("/logs/logfile.bbl");
-    if (logFileExists) {
-      await this.BlackboxDecodeModule.FS.unlink("/logs/logfile.bbl");
-    }
-
-    const {exists: logsDirExists} = await this.BlackboxDecodeModule.FS.analyzePath("/logs");
-    if (!logsDirExists) {
-      await this.BlackboxDecodeModule.FS.mkdir("/logs");
-    }
-
-    await this.BlackboxDecodeModule.FS.writeFile("/logs/logfile.bbl", blackbox);
-
-    this.BlackboxDecodeModule.print = function (index) {
-      let memory = new Uint8Array(
-        this.BlackboxDecodeModule.instance.exports.memory.buffer
-      );
-      let string = "";
-      while (memory[index] !== 0) {
-        string += String.fromCharCode(memory[index++]);
-      }
-    };
-
+    await this.BlackboxDecodeModule.FS.writeFile("/logfile.bbl", blackbox);
     this.BlackboxDecodeModule._decode();
 
-    const files = this.BlackboxDecodeModule.FS.readdir("/logs");
+    const filesInRootDirectory = this.BlackboxDecodeModule.FS.readdir("/");
 
-    const csvFileNames = files.filter((file: string) => file.endsWith(".csv"));
-    const csvFiles = csvFileNames.map((fileName: string) => {
-      const csv = this.BlackboxDecodeModule.FS.readFile(`/logs/${fileName}`, {
+    const decodedLogFileName = filesInRootDirectory.find((file: string) => file.endsWith(".csv"));
+    const csvFile = await this.BlackboxDecodeModule.FS.readFile(
+      `/${decodedLogFileName}`,
+      {
         encoding: "utf8",
-      });
+      }
+    ) as string;
+    await this.BlackboxDecodeModule.FS.unlink(`/${decodedLogFileName}`);
 
-      this.BlackboxDecodeModule.FS.unlink(`/logs/${fileName}`);
-
-      return { fileName, content: csv };
-    });
-
-    await this.BlackboxDecodeModule.FS.unlink("/logs/logfile.bbl");
-
-    return csvFiles;
+    return csvFile;
   }
 }
