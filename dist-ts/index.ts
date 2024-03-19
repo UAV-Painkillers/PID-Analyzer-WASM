@@ -19,7 +19,7 @@ export class PIDAnalyzer {
   }
 
   public async init() {
-    await this.pythonAnalyzer.init();
+    await this.pythonAnalyzer.init(),
   }
 
   public async decodeMainBBL(logFile: ArrayBuffer): Promise<DecoderResult[]> {
