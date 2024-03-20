@@ -1,9 +1,11 @@
 import { PYTHON_ANALYZER_CODE_NAMES, loadCode } from "./code-loader";
 import { PyodideRuntime, PyodideStatusListener } from "./pyodide";
 import {
+  AnalyzeOneFlightStep,
   DecoderResult,
   PIDAnalyzerHeaderInformation,
   PIDAnalyzerResult,
+  SplitBBLStep,
 } from "./types";
 
 interface SplitterResult {
@@ -24,12 +26,14 @@ export class PythonAnalyzer {
 
   public async splitMainBBLIntoSubBBL(
     logFile: ArrayBuffer,
-    onStatus?: PyodideStatusListener
+    onStatus?: (status: SplitBBLStep, payload: any) => any,
   ): Promise<{ header: PIDAnalyzerHeaderInformation; bbl: ArrayBuffer }[]> {
     const code = await loadCode(PYTHON_ANALYZER_CODE_NAMES.SPLIT_BBL);
 
     await this.pyodideRuntime.FS.writeFile("/log.bbl", new Uint8Array(logFile));
-    await this.pyodideRuntime.runAsync(code, onStatus);
+    await this.pyodideRuntime.runAsync(code, (status, payload) => {
+      onStatus?.(status as SplitBBLStep, payload);
+    });
 
     const result = await this.pyodideRuntime.FS.readFile("/result.json", {
       encoding: "utf8",
@@ -61,7 +65,7 @@ export class PythonAnalyzer {
 
   public async analyzeOneFlight(
     decoderResult: DecoderResult,
-    onStatus?: PyodideStatusListener
+    onStatus?: (status: AnalyzeOneFlightStep, payload: any) => any,
   ): Promise<PIDAnalyzerResult> {
     const code = await loadCode(PYTHON_ANALYZER_CODE_NAMES.ANALYZE_ONE_FLIGHT);
 
@@ -71,7 +75,9 @@ export class PythonAnalyzer {
       JSON.stringify(decoderResult.header)
     );
 
-    await this.pyodideRuntime.runAsync(code, onStatus);
+    await this.pyodideRuntime.runAsync(code, (status, payload) => {
+      onStatus?.(status as AnalyzeOneFlightStep, payload);
+    });
 
     const headdictContent = this.pyodideRuntime.FS.readFile(`/results/headdict.json`, {
       encoding: "utf8",

@@ -7,7 +7,7 @@ import json
 LOG_MIN_BYTES = 500000
 
 async def split_bbl(bbl_path, out_path):
-    await reportStatusToJs("SPLITTING BBL")
+    await reportStatusToJs("SPLITTING_BBL")
     with open(bbl_path, 'rb') as binary_log_view:
         content = binary_log_view.read()
 
@@ -31,7 +31,7 @@ async def split_bbl(bbl_path, out_path):
             sub_bbl.write(firstline + raw_log)
         sub_bbl_file_names.append(sub_bbl_path)
 
-    await reportStatusToJs("BBLS SPLITTED", len(sub_bbl_file_names))
+    await reportStatusToJs("BBLS_SPLITTED", len(sub_bbl_file_names))
 
     return sub_bbl_file_names
 

@@ -374,11 +374,9 @@ class CSV_log:
         self.result_path = result_path
 
     async def asyncInit(self):
-        await reportStatusToJs("READING_DECODED_SUB_BBL_START")
-        self.data = self.readcsv(self.file)
-        await reportStatusToJs("READING_DECODED_SUB_BBL_COMPLETE")
-
+        self.data = await self.readcsv(self.file)
         self.traces = self.find_traces(self.data)
+
         await reportStatusToJs("WRITE_HEADDICT_TO_JSON_START")
         headdict_out_path = self.result_path + "/headdict.json"
         with open(headdict_out_path, 'w', encoding='utf-8') as json_file:
@@ -386,23 +384,26 @@ class CSV_log:
         json_file.close()
         await reportStatusToJs("WRITE_HEADDICT_TO_JSON_COMPLETE")
 
-        await reportStatusToJs("ANALYZE_PID_START")
         await self.__analyze()
-        await reportStatusToJs("ANALYZE_PID_COMPLETE")
 
     async def __analyze(self):
+        await reportStatusToJs("ANALYZE_PID_START")
+
         for t in self.traces:
             logging.info(t['name'] + '...   ')
-            await reportStatusToJs("SAVING_ANALYSIS_TRACE_RESULT_START")
+            await reportStatusToJs("SAVING_ANALYSIS_TRACE_RESULT_START", t['name'])
             trace = Trace(t)
             trace_out_path = self.result_path + "/trace_" + t['name'] + ".json"
             with open(trace_out_path, 'w', encoding='utf-8') as json_file:
                 json.dump(trace.to_json_object(), json_file, ensure_ascii=False, indent=4)
             json_file.close()
-            await reportStatusToJs("SAVING_ANALYSIS_TRACE_RESULT_COMPLETE")
+            await reportStatusToJs("SAVING_ANALYSIS_TRACE_RESULT_COMPLETE", t['name'])
             del trace
 
-    def readcsv(self, fpath):
+        await reportStatusToJs("ANALYZE_PID_COMPLETE")
+
+    async def readcsv(self, fpath):
+        await reportStatusToJs("READING_CSV_START")
         logging.info('Reading: Log '+str(self.headdict['logNum']))
         datdic = {}
         ### keycheck for 'usecols' only reads usefull traces, uncommend if needed
@@ -462,6 +463,8 @@ class CSV_log:
                 datdic.update({'gyroData' + i: data['ugyroADC[' + i+']'].values})
             else:
                 logging.warning('No gyro trace found!')
+        
+        await reportStatusToJs("READING_CSV_COMPLETE")
         return datdic
 
 
@@ -498,6 +501,7 @@ class CSV_log:
 
 
 async def run():
+    await reportStatusToJs("START")
     log_csv_path = "/log.csv"
     log_header_path = "/log-header.json"
     result_path = "/results"
@@ -518,5 +522,7 @@ async def run():
     await log.asyncInit()
 
     del log
+
+    await reportStatusToJs("COMPLETE")
 
 await run()
