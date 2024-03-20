@@ -2,7 +2,8 @@
   "name": "@uav.painkillers/pid-analyzer-wasm",
   "author": "UAV-Painkillers (Jan Jaap)",
   "description": "library that does PID analysis for Cleanflight based flight controllers using Python in Web Assembly",
-  "version": "3.0.14",
+  "version": "3.0.15",
+  "type": "module",
   "types": "dist/types/index.d.ts",
   "files": [
     "dist",
