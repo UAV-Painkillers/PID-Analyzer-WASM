@@ -16,6 +16,7 @@ export {
   AnalyzeOneFlightStepToPayloadMap,
   PIDAnalyzerHeaderInformation,
   PIDAnalyzerResult,
+  PIDAnalyzerTraceData,
 } from "./types";
 
 export type PIDAnalyzeStatusHandler = <

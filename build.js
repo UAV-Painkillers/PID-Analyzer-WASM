@@ -1,61 +1,62 @@
-const { execSync } = require("child_process");
-const fs = require("fs");
-const path = require("path");
-const { exec } = require("child_process");
+import { execSync } from "child_process";
+import { existsSync, rmSync, mkdirSync, promises } from "fs";
+import { join } from "path";
 
-const pythonSrcDir = path.join(__dirname, "src/python");
-const typescriptSrcDir = path.join(__dirname, "src/ts");
+const __dirname = process.cwd();
+
+const pythonSrcDir = join(__dirname, "src/python");
+const typescriptSrcDir = join(__dirname, "src/ts");
 
 const typescriptCodeLoaderFileName = "code-loader.ts";
-const typescriptCodeLoaderPath = path.join(
+const typescriptCodeLoaderPath = join(
   typescriptSrcDir,
   typescriptCodeLoaderFileName
 );
 
-const distTsDir = path.join(__dirname, "dist-ts");
-const typescriptCodeLoaderTempPath = path.join(
+const distTsDir = join(__dirname, "dist-ts");
+const typescriptCodeLoaderTempPath = join(
   distTsDir,
   typescriptCodeLoaderFileName
 );
 
-const distDir = path.join(__dirname, "dist");
+const distDir = join(__dirname, "dist");
 
 const main = async () => {
   // delete dist first to start fresh
-  if (fs.existsSync(distDir)) {
-    fs.rmSync(distDir, { recursive: true });
+  if (existsSync(distDir)) {
+    rmSync(distDir, { recursive: true });
   }
-  fs.mkdirSync(distDir);
+  mkdirSync(distDir);
 
-  if (fs.existsSync(distTsDir)) {
-    fs.rmSync(distTsDir, { recursive: true });
+  if (existsSync(distTsDir)) {
+    rmSync(distTsDir, { recursive: true });
   }
-  fs.mkdirSync(distTsDir);
+  mkdirSync(distTsDir);
 
   // clear out temp-dist directory
-  const filesInDistTsDir = await fs.promises.readdir(distTsDir);
+  const filesInDistTsDir = await promises.readdir(distTsDir);
   for (const file of filesInDistTsDir) {
-    await fs.promises.unlink(path.join(distTsDir, file));
+    await promises.unlink(join(distTsDir, file));
   }
 
   // recursive copy over all files and folders to temp-dist
   const copyFiles = async (src, dest) => {
-    const entries = await fs.promises
+    const entries = await promises
       .readdir(src, { withFileTypes: true })
       .catch((err) => console.error(err));
 
     for (const entry of entries) {
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
+      const srcPath = join(src, entry.name);
+      const destPath = join(dest, entry.name);
 
       if (entry.isDirectory()) {
-        await fs.promises
+        await promises
           .mkdir(destPath, { recursive: true })
           .catch((err) => console.error(err));
         await copyFiles(srcPath, destPath);
       }
       if (entry.isFile()) {
-        await fs.promises
+        await promises
           .copyFile(srcPath, destPath)
           .catch((err) => console.error(err));
       }
@@ -63,7 +64,7 @@ const main = async () => {
   };
   await copyFiles(typescriptSrcDir, distTsDir);
 
-  let codeLoader = await fs.promises.readFile(typescriptCodeLoaderPath, "utf8");
+  let codeLoader = await promises.readFile(typescriptCodeLoaderPath, "utf8");
 
   // determine start and end of python code fetching snippet
   // example: '${/* GEN_PY_CODE<PID-Analyzer.py> */""}';
@@ -83,7 +84,7 @@ const main = async () => {
     );
 
     const pythonCode = (
-      await fs.promises.readFile(path.join(pythonSrcDir, fileName), "utf8")
+      await promises.readFile(join(pythonSrcDir, fileName), "utf8")
     )
       .split("`")
       .join("\\`")
@@ -99,7 +100,7 @@ const main = async () => {
   }
 
   // write modified entrypoint to temp-dist
-  await fs.promises.writeFile(typescriptCodeLoaderTempPath, codeLoader);
+  await promises.writeFile(typescriptCodeLoaderTempPath, codeLoader);
 
   execSync("npm run tsc -- -p tsconfig.types.json", {
     cwd: __dirname,
@@ -108,7 +109,7 @@ const main = async () => {
   execSync("npx webpack", { cwd: __dirname, stdio: "inherit" });
 
   // delete dist-ts
-  fs.rmSync(distTsDir, { recursive: true });
+  rmSync(distTsDir, { recursive: true });
 };
 
 main().catch(console.error);
