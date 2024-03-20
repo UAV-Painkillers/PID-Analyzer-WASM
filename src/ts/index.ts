@@ -11,6 +11,16 @@ import type {
 } from "./types";
 export * from "./types";
 
+export type PIDAnalyzeStatusHandler = <
+  TSplitStatus extends SplitBBLStep,
+  TAnalyzeStatus extends AnalyzeOneFlightStep
+>(
+  status: TSplitStatus | TAnalyzeStatus,
+  payload?:
+    | AnalyzeOneFlightStepToPayloadMap[TAnalyzeStatus]
+    | SplitBBLStepToPayloadMap[TSplitStatus]
+) => any;
+
 export class PIDAnalyzer {
   private decoder: Decoder;
   private pythonAnalyzer: PythonAnalyzer;
@@ -45,15 +55,7 @@ export class PIDAnalyzer {
 
   public async analyze(
     decoderResults: DecoderResult[],
-    onStatus?: <
-      TSplitStatus extends SplitBBLStep,
-      TAnalyzeStatus extends AnalyzeOneFlightStep
-    >(
-      status: TSplitStatus | TAnalyzeStatus,
-      payload?:
-        | AnalyzeOneFlightStepToPayloadMap[TAnalyzeStatus]
-        | SplitBBLStepToPayloadMap[TSplitStatus]
-    ) => void
+    onStatus?: PIDAnalyzeStatusHandler
   ): Promise<PIDAnalyzerResult[]> {
     const results: PIDAnalyzerResult[] = [];
     let index = 0;
