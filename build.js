@@ -108,7 +108,7 @@ const main = async () => {
   execSync("npx webpack", { cwd: __dirname, stdio: "inherit" });
 
   // delete dist-ts
-  // fs.rmSync(distTsDir, { recursive: true });
+  fs.rmSync(distTsDir, { recursive: true });
 };
 
 main().catch(console.error);

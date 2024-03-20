@@ -6,7 +6,7 @@ import json
 
 LOG_MIN_BYTES = 500000
 
-async def split_bbl(bbl_path, out_path):
+async def async_split_bbl(bbl_path, out_path):
     await reportStatusToJs("SPLITTING_BBL")
     with open(bbl_path, 'rb') as binary_log_view:
         content = binary_log_view.read()
@@ -31,11 +31,11 @@ async def split_bbl(bbl_path, out_path):
             sub_bbl.write(firstline + raw_log)
         sub_bbl_file_names.append(sub_bbl_path)
 
-    await reportStatusToJs("BBLS_SPLITTED", len(sub_bbl_file_names))
+    await reportStatusToJs("BBLS_SPLITTED", len(sub_bbl_file_names) - 1)
 
     return sub_bbl_file_names
 
-async def get_log_header(sub_bbl_filename_list):
+async def async_get_log_header(sub_bbl_filename_list):
     await reportStatusToJs("READING_HEADERS_START", len(sub_bbl_filename_list))
 
     all_header = []
@@ -141,7 +141,7 @@ async def get_log_header(sub_bbl_filename_list):
     await reportStatusToJs("READING_HEADERS_COMPLETE")
     return all_header
 
-async def run():
+async def async_run():
     bbl_path = "/log.bbl"
     out_path = "/splits"
 
@@ -154,8 +154,8 @@ async def run():
     os.makedirs(out_path, exist_ok=True)
 
     await reportStatusToJs("RUNNING")
-    sub_bbl_filenames = await split_bbl(bbl_path, out_path)
-    all_sub_bbl_headers = await get_log_header(sub_bbl_filenames)
+    sub_bbl_filenames = await async_split_bbl(bbl_path, out_path)
+    all_sub_bbl_headers = await async_get_log_header(sub_bbl_filenames)
 
     combined_json_output = []
     for index, header in enumerate(all_sub_bbl_headers):
@@ -171,4 +171,4 @@ async def run():
 
     await reportStatusToJs("COMPLETE")
 
-await run()
+await async_run()

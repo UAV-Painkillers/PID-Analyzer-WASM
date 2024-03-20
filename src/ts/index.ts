@@ -1,7 +1,7 @@
 // @ts-ignore
 import { Decoder } from "./decoder";
 import { PythonAnalyzer } from "./python-analyser";
-import type {
+import {
   AnalyzeOneFlightStep,
   AnalyzeOneFlightStepToPayloadMap,
   DecoderResult,
@@ -9,16 +9,26 @@ import type {
   SplitBBLStep,
   SplitBBLStepToPayloadMap,
 } from "./types";
-export * from "./types";
+export {
+  SplitBBLStep,
+  SplitBBLStepToPayloadMap,
+  AnalyzeOneFlightStep,
+  AnalyzeOneFlightStepToPayloadMap,
+  PIDAnalyzerHeaderInformation,
+  PIDAnalyzerResult,
+} from "./types";
 
 export type PIDAnalyzeStatusHandler = <
-  TSplitStatus extends SplitBBLStep,
   TAnalyzeStatus extends AnalyzeOneFlightStep
 >(
-  status: TSplitStatus | TAnalyzeStatus,
-  payload?:
-    | AnalyzeOneFlightStepToPayloadMap[TAnalyzeStatus]
-    | SplitBBLStepToPayloadMap[TSplitStatus]
+  status: TAnalyzeStatus,
+  flightLogIndex: number,
+  payload?: AnalyzeOneFlightStepToPayloadMap[TAnalyzeStatus]
+) => any;
+
+export type DecodeStatusHandler = <TDecodeStatus extends SplitBBLStep>(
+  status: TDecodeStatus,
+  payload?: SplitBBLStepToPayloadMap[TDecodeStatus]
 ) => any;
 
 export class PIDAnalyzer {
@@ -34,13 +44,19 @@ export class PIDAnalyzer {
     await Promise.all([this.pythonAnalyzer.init(), this.decoder.init()]);
   }
 
-  public async decodeMainBBL(logFile: ArrayBuffer): Promise<DecoderResult[]> {
+  public async decodeMainBBL(
+    logFile: ArrayBuffer,
+    onStatus?: DecodeStatusHandler
+  ): Promise<DecoderResult[]> {
     const splitResults = await this.pythonAnalyzer.splitMainBBLIntoSubBBL(
-      logFile
+      logFile,
+      onStatus
     );
 
     const allCsvFiles: DecoderResult[] = [];
-    for (const { bbl, header } of splitResults) {
+    for (let index = 0; index < splitResults.length; index++) {
+      onStatus?.(SplitBBLStep.DECODING_SUB_BBL_START, index);
+      const { header, bbl } = splitResults[index];
       const csvFiles = await this.decoder.decodeBlackbox(bbl);
       const firstCsvFile = csvFiles[0];
 
@@ -48,6 +64,7 @@ export class PIDAnalyzer {
         csv: firstCsvFile.content,
         header,
       });
+      onStatus?.(SplitBBLStep.DECODING_SUB_BBL_COMPLETE, index);
     }
 
     return allCsvFiles;
@@ -58,14 +75,18 @@ export class PIDAnalyzer {
     onStatus?: PIDAnalyzeStatusHandler
   ): Promise<PIDAnalyzerResult[]> {
     const results: PIDAnalyzerResult[] = [];
-    let index = 0;
-    for (const decoderResult of decoderResults) {
-      index++;
-      console.log("Analyzing one flight", index++);
+
+    for (let index = 0; index < decoderResults.length; index++) {
+      console.log("Analyzing one flight", index);
       const result = await this.pythonAnalyzer.analyzeOneFlight(
-        decoderResult,
-        onStatus
+        decoderResults[index],
+        (status, payload) => onStatus?.(status, index, payload)
       );
+
+      if (!result) {
+        continue;
+      }
+
       results.push(result);
     }
 

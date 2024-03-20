@@ -7,6 +7,7 @@ from pandas import read_csv
 from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter1d
 from scipy.optimize import minimize
+import sys
 import os
 
 class Trace:
@@ -76,8 +77,10 @@ class Trace:
 
     def __init__(self, data):
         self.data = data
-        self.input = self.equalize(data['time'], self.pid_in(data['p_err'], data['gyro'], data['P']))[1]  # /20.
-        self.data.update({'input': self.pid_in(data['p_err'], data['gyro'], data['P'])})
+
+    async def async_init(self):
+        self.input, _ = await self.async_equalize(self.data['time'], self.pid_in(self.data['p_err'], self.data['gyro'], self.data['P']))  # /20.
+        self.data.update({'input': self.pid_in(self.data['p_err'], self.data['gyro'], self.data['P'])})
         self.equalize_data()
 
         self.time = self.data['time']
@@ -99,15 +102,15 @@ class Trace:
         self.low_mask, self.high_mask = self.low_high_mask(self.max_in, self.threshold)       #calcs masks for high and low inputs according to threshold
         self.toolow_mask = self.low_high_mask(self.max_in, 20)[1]          #mask for ignoring noisy low input
 
-        self.resp_sm = self.weighted_mode_avr(self.spec_sm, self.toolow_mask, [-1.5,3.5], 1000)
+        self.resp_sm = await self.async_weighted_mode_avr(self.spec_sm, self.toolow_mask, [-1.5,3.5], 1000)
         self.resp_quality = -self.to_mask((np.abs(self.spec_sm -self.resp_sm[0]).mean(axis=1)).clip(0.5-1e-9,0.5))+1.
         # masking by setting trottle of unwanted traces to neg
         self.thr_response = self.hist2d(self.max_thr * (2. * (self.toolow_mask*self.resp_quality) - 1.), self.time_resp,
                                         (self.spec_sm.transpose() * self.toolow_mask).transpose(), [101, self.rlen])
 
-        self.resp_low = self.weighted_mode_avr(self.spec_sm, self.low_mask*self.toolow_mask, [-1.5,3.5], 1000)
+        self.resp_low = await self.async_weighted_mode_avr(self.spec_sm, self.low_mask*self.toolow_mask, [-1.5,3.5], 1000)
         if self.high_mask.sum()>0:
-            self.resp_high = self.weighted_mode_avr(self.spec_sm, self.high_mask*self.toolow_mask, [-1.5,3.5], 1000)
+            self.resp_high = await self.async_weighted_mode_avr(self.spec_sm, self.high_mask*self.toolow_mask, [-1.5,3.5], 1000)
 
         self.noise_winlen = self.stepcalc(self.time, Trace.noise_framelen)
         self.noise_stack = self.winstacker({'time':[], 'gyro':[], 'throttle':[], 'd_err':[], 'debug':[]},
@@ -152,15 +155,6 @@ class Trace:
         expoin = (np.exp((rcin - inmax) / rate) - np.exp((-rcin - inmax) / rate)) * outmax
         return expoin
 
-    def calc_delay(self, time, trace1, trace2):
-        ### minimizes trace1-trace2 by shifting trace1
-        tf1 = interp1d(time[2000:-2000], trace1[2000:-2000], fill_value=0., bounds_error=False)
-        tf2 = interp1d(time[2000:-2000], trace2[2000:-2000], fill_value=0., bounds_error=False)
-        fun = lambda x: ((tf1(time - x*0.5) - tf2(time+ x*0.5)) ** 2).mean()
-        shift = minimize(fun, np.array([0.01])).x[0]
-        steps = np.round(shift / (time[1] - time[0]))
-        return {'time':shift, 'steps':int(steps)}
-
     def tukeywin(self, len, alpha=0.5):
         ### makes tukey widow for envelopig
         M = len
@@ -186,8 +180,13 @@ class Trace:
 
         return w
 
-    def equalize(self, time, data):
+    async def async_equalize(self, time, data):
         ### equalizes time scale
+        if (len(time) == 0 or len(data) == 0):
+            logging.warning('No data for equalization!')
+            await reportStatusToJs("ERROR", "No data for equalization!")
+            sys.exit(0)
+
         data_f = interp1d(time, data)
         newtime = np.linspace(time[0], time[-1], len(time), dtype=np.float64)
         return newtime, data_f(newtime)
@@ -327,7 +326,7 @@ class Trace:
             'max':maxval
         }
 
-    def weighted_mode_avr(self, values, weights, vertrange, vertbins):
+    async def async_weighted_mode_avr(self, values, weights, vertrange, vertbins):
         ### finds the most common trace and std
         threshold = 0.5  # threshold for std calculation
         filt_width = 7  # width of gaussian smoothing for hist data
@@ -348,6 +347,10 @@ class Trace:
             hist2d_sm /= np.max(hist2d_sm, 0)
 
 
+            if (resp_y.size == 0):
+                await reportStatusToJs("ERROR", "resp_y.size == 0")
+                sys.exit(0)
+                return
             pixelpos = np.repeat(resp_y.reshape(len(resp_y), 1), len(times[0]), axis=1)
             avr = np.average(pixelpos, 0, weights=hist2d_sm * hist2d_sm)
         else:
@@ -373,8 +376,8 @@ class CSV_log:
         self.headdict = headdict
         self.result_path = result_path
 
-    async def asyncInit(self):
-        self.data = await self.readcsv(self.file)
+    async def async_init(self):
+        self.data = await self.async_readcsv(self.file)
         self.traces = self.find_traces(self.data)
 
         await reportStatusToJs("WRITE_HEADDICT_TO_JSON_START")
@@ -384,25 +387,31 @@ class CSV_log:
         json_file.close()
         await reportStatusToJs("WRITE_HEADDICT_TO_JSON_COMPLETE")
 
-        await self.__analyze()
+        await self.async_analyze()
 
-    async def __analyze(self):
+    async def async_analyze(self):
         await reportStatusToJs("ANALYZE_PID_START")
 
-        for t in self.traces:
-            logging.info(t['name'] + '...   ')
-            await reportStatusToJs("SAVING_ANALYSIS_TRACE_RESULT_START", t['name'])
-            trace = Trace(t)
-            trace_out_path = self.result_path + "/trace_" + t['name'] + ".json"
+        for trace_data in self.traces:
+            logging.info(trace_data['name'] + '...   ')
+            await reportStatusToJs("ANALYZE_PID_TRACE_START", trace_data['name'])
+            logging.info('trace constructor')
+            trace = Trace(trace_data)
+
+            logging.info('trace async init')
+            await trace.async_init()
+
+            logging.info('trace to json')
+            trace_out_path = self.result_path + "/trace_" + trace_data['name'] + ".json"
             with open(trace_out_path, 'w', encoding='utf-8') as json_file:
                 json.dump(trace.to_json_object(), json_file, ensure_ascii=False, indent=4)
             json_file.close()
-            await reportStatusToJs("SAVING_ANALYSIS_TRACE_RESULT_COMPLETE", t['name'])
+            await reportStatusToJs("ANALYZE_PID_TRACE_COMPLETE", trace_data['name'])
             del trace
 
         await reportStatusToJs("ANALYZE_PID_COMPLETE")
 
-    async def readcsv(self, fpath):
+    async def async_readcsv(self, fpath):
         await reportStatusToJs("READING_CSV_START")
         logging.info('Reading: Log '+str(self.headdict['logNum']))
         datdic = {}
@@ -500,7 +509,7 @@ class CSV_log:
         return traces
 
 
-async def run():
+async def async_run():
     await reportStatusToJs("START")
     log_csv_path = "/log.csv"
     log_header_path = "/log-header.json"
@@ -519,10 +528,10 @@ async def run():
     header_file.close()
 
     log = CSV_log(log_csv_path, header_dict, result_path)
-    await log.asyncInit()
+    await log.async_init()
 
     del log
 
     await reportStatusToJs("COMPLETE")
 
-await run()
+await async_run()
