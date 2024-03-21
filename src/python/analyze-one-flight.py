@@ -27,47 +27,23 @@ class Trace:
             'input': self.input.tolist(),
             'time': self.time.tolist(),
             'throttle': self.throttle.tolist(),
-            'avr_t': self.avr_t.tolist(),
-            'spec_sm': self.spec_sm.tolist(),
-            'thr_response': {
-                'hist2d_norm': {
-                    'histogram': self.thr_response['hist2d_norm'][0].tolist(),
-                    'bins': self.thr_response['hist2d_norm'][1].tolist()
-                }
-            },
             'time_resp': self.time_resp.tolist(),
             'resp_low': [
                 self.resp_low[0].tolist(),
             ],
             'high_mask': self.high_mask.tolist(),
             'noise_gyro': {
-                'throt_hist_avr': self.noise_gyro['throt_hist_avr'].tolist(),
-                'throt_axis': self.noise_gyro['throt_axis'].tolist(),
                 'freq_axis': self.noise_gyro['freq_axis'].tolist(),
-                'hist2d_norm': self.noise_gyro['hist2d_norm'].tolist(),
                 'hist2d_sm': self.noise_gyro['hist2d_sm'].tolist(),
-                'hist2d': self.noise_gyro['hist2d'].tolist(),
-                'max': self.noise_gyro['max']
             },
             'noise_d': {
-                'throt_hist_avr': self.noise_d['throt_hist_avr'].tolist(),
-                'throt_axis': self.noise_d['throt_axis'].tolist(),
                 'freq_axis': self.noise_d['freq_axis'].tolist(),
-                'hist2d_norm': self.noise_d['hist2d_norm'].tolist(),
                 'hist2d_sm': self.noise_d['hist2d_sm'].tolist(),
-                'hist2d': self.noise_d['hist2d'].tolist(),
-                'max': self.noise_d['max']
             },
             'noise_debug': {
-                'throt_hist_avr': self.noise_debug['throt_hist_avr'].tolist(),
-                'throt_axis': self.noise_debug['throt_axis'].tolist(),
                 'freq_axis': self.noise_debug['freq_axis'].tolist(),
-                'hist2d_norm': self.noise_debug['hist2d_norm'].tolist(),
                 'hist2d_sm': self.noise_debug['hist2d_sm'].tolist(),
-                'hist2d': self.noise_debug['hist2d'].tolist(),
-                'max': self.noise_debug['max']
             },
-            'filter_trans': self.filter_trans.tolist(),
         }
 
         if self.high_mask.sum()>0:
