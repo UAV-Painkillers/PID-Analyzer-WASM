@@ -22,6 +22,7 @@ export interface PIDAnalyzerTraceData {
   name: string;
   gyro: number[];
   input: number[];
+  feedforward: number[];
   time: number[];
   throttle: number[];
   avr_t: number[];

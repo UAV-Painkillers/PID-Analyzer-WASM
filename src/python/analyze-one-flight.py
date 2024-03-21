@@ -27,6 +27,7 @@ class Trace:
             'input': self.input.tolist(),
             'time': self.time.tolist(),
             'throttle': self.throttle.tolist(),
+            'feedforward': self.data['feedforward'].tolist(),
             'time_resp': self.time_resp.tolist(),
             'resp_low': [
                 self.resp_low[0].tolist(),
@@ -397,6 +398,7 @@ class CSV_log:
                    'axisP[0]','axisP[1]','axisP[2]',
                    'axisI[0]', 'axisI[1]', 'axisI[2]',
                    'axisD[0]', 'axisD[1]','axisD[2]',
+                   'axisF[0]', 'axisF[1]', 'axisF[2]',
                    'gyroADC[0]', 'gyroADC[1]', 'gyroADC[2]',
                    'gyroData[0]', 'gyroData[1]', 'gyroData[2]',
                    'ugyroADC[0]', 'ugyroADC[1]', 'ugyroADC[2]',
@@ -411,6 +413,7 @@ class CSV_log:
 
         for i in ['0', '1', '2']:
             datdic.update({'rcCommand' + i: data['rcCommand['+i+']'].values})
+            datdic.update({'axisF' + i: data['axisF[' + i + ']'].values})
             #datdic.update({'PID loop in' + i: data['axisP[' + i + ']'].values})
             try:
                 datdic.update({'debug' + i: data['debug[' + i + ']'].values})
@@ -465,6 +468,7 @@ class CSV_log:
             dic.update({'time':time})
             dic.update({'p_err':dat['PID loop in'+str(i)]})
             dic.update({'rcinput': dat['rcCommand' + str(i)]})
+            dic.update({'feedforward': dat['axisF' + str(i)]})
             dic.update({'gyro':dat['gyroData'+str(i)]})
             dic.update({'PIDsum':dat['PID sum'+str(i)]})
             dic.update({'d_err': dat['d_err' + str(i)]})
