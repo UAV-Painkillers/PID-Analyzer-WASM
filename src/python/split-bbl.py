@@ -80,7 +80,19 @@ async def async_get_log_header(sub_bbl_filename_list):
             'yaw_lpf_hz'        :'',
             'dterm_notch_hz'    :'',
             'dterm_notch_cutoff':'',
-            'debug_mode'        :''
+            'debug_mode'        :'',
+            'simplified_master_multiplier'      : '',
+            'simplified_i_gain'                 : '',
+            'simplified_d_gain'                 : '',
+            'simplified_pi_gain'                : '',
+            'simplified_dmax_gain'              : '',
+            'simplified_feedforward_gain'       : '',
+            'simplified_pitch_d_gain'           : '',
+            'simplified_pitch_pi_gain'          : '',
+            'simplified_dterm_filter'           : '',
+            'simplified_dterm_filter_multiplier': '',
+            'simplified_gyro_filter'            : '',
+            'simplified_gyro_filter_multiplier' : ''
         }
 
         ### different versions of fw have different names for the same thing.
@@ -122,7 +134,19 @@ async def async_get_log_header(sub_bbl_filename_list):
             'yaw_lpf_hz:'           :'yaw_lpf_hz',
             'dterm_notch_hz:'       :'dterm_notch_hz',
             'dterm_notch_cutoff:'   :'dterm_notch_cutoff',
-            'debug_mode:'           :'debug_mode'
+            'debug_mode:'           :'debug_mode',
+            'simplified_master_multiplier'      : 'simplified_master_multiplier',
+            'simplified_i_gain'                 : 'simplified_i_gain',
+            'simplified_d_gain'                 : 'simplified_d_gain',
+            'simplified_pi_gain'                : 'simplified_pi_gain',
+            'simplified_dmax_gain'              : 'simplified_dmax_gain',
+            'simplified_feedforward_gain'       : 'simplified_feedforward_gain',
+            'simplified_pitch_d_gain'           : 'simplified_pitch_d_gain',
+            'simplified_pitch_pi_gain'          : 'simplified_pitch_pi_gain',
+            'simplified_dterm_filter'           : 'simplified_dterm_filter',
+            'simplified_dterm_filter_multiplier': 'simplified_dterm_filter_multiplier',
+            'simplified_gyro_filter'            : 'simplified_gyro_filter',
+            'simplified_gyro_filter_multiplier' : 'simplified_gyro_filter_multiplier'
         }
 
         header['tempFile'] = sub_bbl_filename

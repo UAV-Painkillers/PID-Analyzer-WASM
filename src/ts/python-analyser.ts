@@ -99,6 +99,20 @@ export class PythonAnalyzer {
       }
     );
     const headdict = JSON.parse(headdictContent);
+    Object.entries(headdict).forEach(([key, value]) => {
+      if (key.startsWith('simplified_')) {
+        if (typeof value !== 'string') {
+          return;
+        }
+        if (value.length === 0) {
+          return;
+        }
+
+        const intValue = parseInt(value as string, 10) / 100;
+
+        headdict[key] = intValue.toFixed(2);
+      }
+    });
 
     const axis = ["roll", "pitch", "yaw"];
     const [roll, pitch, yaw] = await Promise.all(

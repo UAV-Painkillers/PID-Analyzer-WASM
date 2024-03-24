@@ -6,6 +6,18 @@ export interface PIDAnalyzerHeaderInformation {
   maxThrottle: number;
   tpa_breakpoint: number;
   tpa_percent: number;
+  simplified_d_gain?: number | null;
+  simplified_dmax_gain?: number | null;
+  simplified_dterm_filter?: number | null;
+  simplified_dterm_filter_multiplier?: number | null;
+  simplified_feedforward_gain?: number | null;
+  simplified_gyro_filter?: number | null;
+  simplified_gyro_filter_multiplier?: number | null;
+  simplified_i_gain?: number | null;
+  simplified_master_multiplier?: number | null;
+  simplified_pi_gain?: number | null;
+  simplified_pitch_d_gain?: number | null;
+  simplified_pitch_pi_gain?: number | null;
 }
 
 export interface PIDAnalyzerTraceNoiseData {
@@ -75,12 +87,12 @@ export type AnalyzeOneFlightStepToPayloadMap = {
   [AnalyzeOneFlightStep.WRITE_HEADDICT_TO_JSON_START]: undefined;
   [AnalyzeOneFlightStep.WRITE_HEADDICT_TO_JSON_COMPLETE]: undefined;
   [AnalyzeOneFlightStep.ANALYZE_PID_START]: undefined;
-  [AnalyzeOneFlightStep.ANALYZE_PID_TRACE_START]: 'roll' | 'pitch' | 'yaw';
-  [AnalyzeOneFlightStep.ANALYZE_PID_TRACE_COMPLETE]: 'roll' | 'pitch' | 'yaw';
+  [AnalyzeOneFlightStep.ANALYZE_PID_TRACE_START]: "roll" | "pitch" | "yaw";
+  [AnalyzeOneFlightStep.ANALYZE_PID_TRACE_COMPLETE]: "roll" | "pitch" | "yaw";
   [AnalyzeOneFlightStep.ANALYZE_PID_COMPLETE]: undefined;
   [AnalyzeOneFlightStep.COMPLETE]: undefined;
   [AnalyzeOneFlightStep.ERROR]: string;
-}
+};
 
 export enum SplitBBLStep {
   SPLITTING_BBL = "SPLITTING_BBL",
