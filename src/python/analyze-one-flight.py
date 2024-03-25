@@ -184,7 +184,7 @@ class Trace:
         arr_len = duration * freq
         return int(arr_len)
 
-    def winstacker(self, stackdict, flen, superpos):
+    def winstacker_original(self, stackdict, flen, superpos):
         ### makes stack of windows for deconvolution
         tlen = len(self.data['time'])
         shift = int(flen/superpos)
@@ -192,6 +192,19 @@ class Trace:
         for i in np.arange(wins):
             for key in stackdict.keys():
                 stackdict[key].append(self.data[key][i * shift:i * shift + flen])
+        for k in stackdict.keys():
+            stackdict[k]=np.array(stackdict[k], dtype=np.float64)
+        return stackdict
+    
+    def winstacker(self, stackdict, flen, superpos):
+        ### makes stack of windows for deconvolution
+        tlen = len(self.data['time'])
+        shift = int(flen/superpos)
+        wins = int(tlen/shift)-superpos
+        for i in np.arange(wins):
+            for key in stackdict.keys():
+                if i * shift + flen <= tlen:
+                    stackdict[key].append(self.data[key][i * shift:i * shift + flen])
         for k in stackdict.keys():
             stackdict[k]=np.array(stackdict[k], dtype=np.float64)
         return stackdict
@@ -392,6 +405,12 @@ class CSV_log:
 
     async def async_readcsv(self, fpath):
         await reportStatusToJs("READING_CSV_START")
+
+        if os.path.getsize(fpath) == 0:
+            logging.error('File is empty: ' + fpath)
+            await reportStatusToJs("ERROR", "No Headers in log")
+            sys.exit(1)
+    
         logging.info('Reading: Log '+str(self.headdict['logNum']))
         datdic = {}
         ### keycheck for 'usecols' only reads usefull traces, uncommend if needed
@@ -508,12 +527,16 @@ async def async_run():
         header_dict = json.load(header_file)
     header_file.close()
 
-    log = CSV_log(log_csv_path, header_dict, result_path)
-    await log.async_init()
-
-    del log
-    del header_dict
-
-    await reportStatusToJs("COMPLETE")
+    try:
+        log = CSV_log(log_csv_path, header_dict, result_path)
+        await log.async_init()
+        await reportStatusToJs("COMPLETE")
+    except Exception as e:
+        logging.error('Error: ' + str(e))
+        await reportStatusToJs("ERROR", str(e))
+        raise e
+    finally:
+        del header_dict
+        del log
 
 await async_run()

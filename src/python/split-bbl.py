@@ -6,7 +6,7 @@ import json
 
 LOG_MIN_BYTES = 500000
 
-async def async_split_bbl(bbl_path, out_path):
+async def async_split_bbl_old(bbl_path, out_path):
     await reportStatusToJs("SPLITTING_BBL")
     with open(bbl_path, 'rb') as binary_log_view:
         content = binary_log_view.read()
@@ -30,10 +30,40 @@ async def async_split_bbl(bbl_path, out_path):
         with open(sub_bbl_path, 'wb') as sub_bbl:
             sub_bbl.write(firstline + raw_log)
         sub_bbl_file_names.append(sub_bbl_path)
+        logging.info('Wrote %s', sub_bbl_path)
 
-    await reportStatusToJs("BBLS_SPLITTED", len(sub_bbl_file_names) - 1)
+    sub_bbl_count = len(sub_bbl_file_names)
+    logging.info('Split %s into %s sub-bbl files', bbl_path, sub_bbl_count)
+    await reportStatusToJs("BBLS_SPLITTED", sub_bbl_count)
 
     return sub_bbl_file_names
+
+async def async_split_bbl(bbl_path, out_path):
+    await reportStatusToJs("SPLITTING_BBL")
+    with open(bbl_path, 'rb') as binary_log_view:
+        content = binary_log_view.read()
+
+    # the first line contains: H Product:Blackbox flight data recorder by Nicholas Sherlock
+    firstline = b'H Product:Blackbox flight data recorder by Nicholas Sherlock'
+
+    raw_logs = content.split(firstline)
+
+    sub_bbl_file_names = []
+    for log_index, raw_log in enumerate(raw_logs):
+        _, path_ext = os.path.splitext(os.path.basename(bbl_path))
+        sub_bbl_path = os.path.join(out_path, f"{log_index}{path_ext}")
+
+        with open(sub_bbl_path, 'wb') as sub_bbl:
+            sub_bbl.write(firstline + raw_log)
+        sub_bbl_file_names.append(sub_bbl_path)
+        logging.info('Wrote %s', sub_bbl_path)
+
+    sub_bbl_count = len(sub_bbl_file_names)
+    logging.info('Split %s into %s sub-bbl files', bbl_path, sub_bbl_count)
+    await reportStatusToJs("BBLS_SPLITTED", sub_bbl_count)
+
+    return sub_bbl_file_names
+
 
 async def async_get_log_header(sub_bbl_filename_list):
     await reportStatusToJs("READING_HEADERS_START", len(sub_bbl_filename_list))

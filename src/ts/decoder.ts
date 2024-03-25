@@ -49,11 +49,13 @@ export class Decoder {
     await this.BlackboxDecodeModule._decode();
 
     const filesInRootDirectory = this.BlackboxDecodeModule.FS.readdir("/");
+    console.log('files in decoder root', filesInRootDirectory);
 
     const decodedLogFileNames = filesInRootDirectory.filter((file: string) =>
       file.endsWith(".csv")
     );
     const csvFiles = await Promise.all(decodedLogFileNames.map(async (decodedLogFileName) => {
+      console.log('reading decoder file', decodedLogFileName);
       const content = await this.BlackboxDecodeModule.FS.readFile(
         `/${decodedLogFileName}`,
         {

@@ -85,8 +85,8 @@ export class PyodideRuntime {
 
       PyodideRuntime.pyodide = await window.loadPyodide({
         indexURL,
-        stdout: (msg) => PyodideRuntime.stdout(msg),
-        stderr: (msg) => PyodideRuntime.stderr(msg),
+        // stdout: (msg) => PyodideRuntime.stdout(msg),
+        // stderr: (msg) => PyodideRuntime.stderr(msg),
       });
 
       PyodideRuntime.pyodide.registerJsModule("js_status", {

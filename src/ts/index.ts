@@ -59,10 +59,15 @@ export class PIDAnalyzer {
       onStatus?.(SplitBBLStep.DECODING_SUB_BBL_START, index);
       const { header, bbl } = splitResults[index];
       const csvFiles = await this.decoder.decodeBlackbox(bbl);
-      const firstCsvFile = csvFiles[0];
+
+      const csvLogFile = csvFiles.find((f) => f.fileName === "logfile.01.csv");
+      console.log("got files from decoder", {
+        csvFiles,
+        csvLogFile,
+      });
 
       allCsvFiles.push({
-        csv: firstCsvFile.content,
+        csv: csvLogFile?.content ?? '',
         header,
       });
       onStatus?.(SplitBBLStep.DECODING_SUB_BBL_COMPLETE, index);
@@ -80,13 +85,14 @@ export class PIDAnalyzer {
     for (let index = 0; index < decoderResults.length; index++) {
       console.log(`Analyzing flight #${index}`);
 
-      const result = await this.pythonAnalyzer.analyzeOneFlight(
-        decoderResults[index],
-        (status, payload) => onStatus?.(status, index, payload)
-      ).catch((e) => {
-        console.warn(`Analysis of flight ${index} failed`, e);
-        return null;
-      });
+      const result = await this.pythonAnalyzer
+        .analyzeOneFlight(decoderResults[index], (status, payload) =>
+          onStatus?.(status, index, payload)
+        )
+        .catch((e) => {
+          console.warn(`Analysis of flight ${index} failed`, e);
+          return null;
+        });
 
       if (!result) {
         continue;

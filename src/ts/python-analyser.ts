@@ -41,12 +41,8 @@ export class PythonAnalyzer {
     });
     const resultJson = JSON.parse(result) as SplitterResult[];
 
-    const resultsWithContent = resultJson.filter(
-      (r) => r.header.rollPID !== ""
-    );
-
     const resultsWithSubBBLS = await Promise.all(
-      resultsWithContent.map(async (splitterResult) => {
+      resultJson.map(async (splitterResult) => {
         const subBblFile = await this.pyodideRuntime.FS.readFile(
           splitterResult.bbl_filename,
           {
@@ -101,8 +97,8 @@ export class PythonAnalyzer {
     );
     const headdict = JSON.parse(headdictContent);
     Object.entries(headdict).forEach(([key, value]) => {
-      if (key.startsWith('simplified_')) {
-        if (typeof value !== 'string') {
+      if (key.startsWith("simplified_")) {
+        if (typeof value !== "string") {
           return;
         }
         if (value.length === 0) {
