@@ -17,11 +17,12 @@ export class PythonAnalyzer {
   private readonly pyodideRuntime: PyodideRuntime;
 
   public constructor(fileOrigin?: string) {
-    this.pyodideRuntime = new PyodideRuntime(fileOrigin);
+    PyodideRuntime.setFileOrigin(fileOrigin);
+    this.pyodideRuntime = new PyodideRuntime();
   }
 
   public async init(): Promise<void> {
-    await this.pyodideRuntime.init();
+    await PyodideRuntime.init();
   }
 
   public async splitMainBBLIntoSubBBL(
@@ -84,7 +85,7 @@ export class PythonAnalyzer {
         onStatus?.(status as AnalyzeOneFlightStep, payload);
       });
     } catch (e) {
-      console.error(e);
+      // console.error(e);
       failure = true;
     }
 

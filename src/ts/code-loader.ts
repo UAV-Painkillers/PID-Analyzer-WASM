@@ -1,5 +1,4 @@
 export enum PYTHON_ANALYZER_CODE_NAMES {
-  FULL = "old/PID-Analyzer.py",
   SPLIT_BBL = "split-bbl.py",
   ANALYZE_ONE_FLIGHT = "analyze-one-flight.py",
 }
@@ -10,10 +9,6 @@ export async function loadCode(
   // TODO: update build pipeline to insert code here
   let code: string | undefined;
   switch (name) {
-    case PYTHON_ANALYZER_CODE_NAMES.FULL: {
-      code = `${/* GEN_PY_CODE<old/PID-Analyzer.py> */ ""}`.trim();
-      break;
-    }
     case PYTHON_ANALYZER_CODE_NAMES.SPLIT_BBL: {
       code = `${/* GEN_PY_CODE<split-bbl.py> */ ""}`.trim();
       break;

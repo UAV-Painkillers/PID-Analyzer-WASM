@@ -78,11 +78,15 @@ export class PIDAnalyzer {
     const results: PIDAnalyzerResult[] = [];
 
     for (let index = 0; index < decoderResults.length; index++) {
-      console.log("Analyzing one flight", index);
+      console.log(`Analyzing flight #${index}`);
+
       const result = await this.pythonAnalyzer.analyzeOneFlight(
         decoderResults[index],
         (status, payload) => onStatus?.(status, index, payload)
-      );
+      ).catch((e) => {
+        console.warn(`Analysis of flight ${index} failed`, e);
+        return null;
+      });
 
       if (!result) {
         continue;

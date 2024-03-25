@@ -1,15 +1,57 @@
 export type PyodideStatusListener = (status: string, payload?: any) => void;
 
+type MessageListener = (msg: string) => void;
+
 declare global {
   interface Window {
-    loadPyodide: (options: { indexURL?: string }) => Promise<any>;
+    loadPyodide: (options: {
+      indexURL?: string;
+      stdout?: MessageListener;
+      stderr?: MessageListener;
+    }) => Promise<any>;
   }
 }
 
 export class PyodideRuntime {
-  private pyodide: any;
-  private fileOrigin?: string;
-  private statusListeners: Array<(status: string, payload?: any) => any> = [];
+  private static pyodide: any;
+  private static fileOrigin?: string;
+  private static runningExecution: Promise<void> | null = null;
+  private static isInitiating: false | Promise<void> = false;
+  private static debug = false;
+  private static stderrListeners: MessageListener[] = [];
+  private static onStatus: PyodideStatusListener | null = null;
+
+  private static stdout(msg: string) {
+    if (!PyodideRuntime.debug) {
+      return;
+    }
+
+    console.log(msg);
+  }
+
+  private static stderr(msg: string) {
+    PyodideRuntime.stderrListeners.forEach((listener) => listener(msg));
+
+    if (!PyodideRuntime.debug) {
+      return;
+    }
+
+    console.error(msg);
+  }
+
+  private static addStderrListener(listener: MessageListener) {
+    PyodideRuntime.stderrListeners.push(listener);
+  }
+
+  private static removeStderrListener(listener: MessageListener) {
+    PyodideRuntime.stderrListeners = PyodideRuntime.stderrListeners.filter(
+      (l) => l !== listener
+    );
+  }
+
+  public static setDebug(debug: boolean) {
+    PyodideRuntime.debug = debug;
+  }
 
   private static REQUIREMENTS = {
     global: {
@@ -29,30 +71,34 @@ export class PyodideRuntime {
     },
   };
 
-  public constructor(fileOrigin?: string) {
-    this.fileOrigin = fileOrigin;
+  public static setFileOrigin(fileOrigin?: string) {
+    PyodideRuntime.fileOrigin = fileOrigin;
   }
 
-  private async loadPyodide() {
-    if (!this.pyodide) {
+  private static async loadPyodide() {
+    if (!PyodideRuntime.pyodide) {
       if (!window.loadPyodide) {
-        await this.loadPyodideViaScriptTag();
+        await PyodideRuntime.loadPyodideViaScriptTag();
       }
 
-      const indexURL = this.fileOrigin;
+      const indexURL = PyodideRuntime.fileOrigin;
 
-      this.pyodide = await window.loadPyodide({
+      PyodideRuntime.pyodide = await window.loadPyodide({
         indexURL,
+        stdout: (msg) => PyodideRuntime.stdout(msg),
+        stderr: (msg) => PyodideRuntime.stderr(msg),
       });
 
-      this.pyodide.registerJsModule("js_status", {
+      PyodideRuntime.pyodide.registerJsModule("js_status", {
         reportStatusToJs: async (status, payloadProxy) => {
           let payload = payloadProxy;
           if (payloadProxy && typeof payloadProxy.toJs === "function") {
             payload = payloadProxy.toJs();
           }
 
-          this.broadCastStatus(status, payload);
+          if (typeof PyodideRuntime.onStatus === "function") {
+            PyodideRuntime.onStatus(status, payload);
+          }
         },
       });
     }
@@ -60,7 +106,7 @@ export class PyodideRuntime {
     return this.pyodide;
   }
 
-  private async loadPyodideViaScriptTag() {
+  private static async loadPyodideViaScriptTag() {
     const pyodideModuleUrl = `${this.fileOrigin}/pyodide.js`;
 
     const pyodideScript = document.createElement("script");
@@ -72,23 +118,25 @@ export class PyodideRuntime {
     });
   }
 
-  private getPyodide() {
-    if (!this.pyodide) {
+  private static getPyodide() {
+    if (!PyodideRuntime.pyodide) {
       throw new Error("Please init first by calling .init()");
     }
 
-    return this.pyodide;
+    return PyodideRuntime.pyodide;
   }
 
-  private requirementsKeyToArray(
+  private static requirementsKeyToArray(
     key: keyof typeof PyodideRuntime.REQUIREMENTS
   ) {
     const requirements: string[] = [];
 
     Object.entries(PyodideRuntime.REQUIREMENTS[key]).forEach(
       ([name, cdnFileName]) => {
-        if (this.fileOrigin) {
-          requirements.push(`${this.fileOrigin}/packages/${cdnFileName}`);
+        if (PyodideRuntime.fileOrigin) {
+          requirements.push(
+            `${PyodideRuntime.fileOrigin}/packages/${cdnFileName}`
+          );
         } else {
           requirements.push(name);
         }
@@ -98,8 +146,8 @@ export class PyodideRuntime {
     return requirements;
   }
 
-  private async loadPackages() {
-    const pyodide = this.getPyodide();
+  private static async loadPackages() {
+    const pyodide = PyodideRuntime.getPyodide();
 
     const requirements: string[] = [];
 
@@ -120,44 +168,52 @@ export class PyodideRuntime {
     );
   }
 
-  public async init() {
-    await this.loadPyodide()
-    await this.loadPackages();
+  public static async init() {
+    if (this.isInitiating) {
+      return PyodideRuntime.isInitiating;
+    }
+
+    let resolveInit: () => void;
+    PyodideRuntime.isInitiating = new Promise(
+      (resolve) => (resolveInit = resolve)
+    );
+
+    await PyodideRuntime.loadPyodide();
+    await PyodideRuntime.loadPackages();
+
+    resolveInit!();
   }
 
   public get FS() {
-    return this.getPyodide().FS;
-  }
-
-  public registerJsModule(name: string, module: any) {
-    this.getPyodide().registerJsModule(name, module);
+    return PyodideRuntime.getPyodide().FS;
   }
 
   public async runAsync(code: string, onStatus?: PyodideStatusListener) {
-    if (typeof onStatus === "function") {
-        this.attachStatusListener(onStatus);
+    if (PyodideRuntime.runningExecution) {
+      await PyodideRuntime.runningExecution;
     }
-    
-    await this.getPyodide().runPythonAsync(code);
 
-    if (typeof onStatus === "function") {
-        this.detachStatusListener(onStatus);
-    }
-  }
-
-  public attachStatusListener(listener: PyodideStatusListener) {
-    this.statusListeners.push(listener);
-  }
-
-  public detachStatusListener(listener: PyodideStatusListener) {
-    this.statusListeners = this.statusListeners.filter(
-      (l) => l !== listener
+    let resolveCurrentExecution: () => void;
+    PyodideRuntime.runningExecution = new Promise(
+      (resolve) => (resolveCurrentExecution = resolve)
     );
-  }
 
-  private broadCastStatus(status: string, payload: any) {
-    this.statusListeners.forEach((listener) => {
-      listener(status, payload);
-    });
+    const pyodide = PyodideRuntime.getPyodide();
+    const dict = pyodide.globals.get("dict");
+    const globals = dict();
+    try {
+      PyodideRuntime.onStatus = (status, payload) => {
+        onStatus?.(status, payload);
+      };
+
+      await pyodide.runPythonAsync(code, { globals, locals: globals });
+    } catch (e) {
+      console.error("Error while running python code", e);
+    } finally {
+      PyodideRuntime.onStatus = null;
+      globals.destroy();
+      dict.destroy();
+      resolveCurrentExecution!();
+    }
   }
 }

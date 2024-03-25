@@ -14,7 +14,6 @@ from scipy.ndimage.filters import gaussian_filter1d
 import matplotlib.colors as colors
 from scipy.optimize import minimize, basinhopping
 from six.moves import input as sinput
-import json
 
 
 # ----------------------------------------------------------------------------------
@@ -355,14 +354,6 @@ class CSV_log:
 
         self.data = self.readcsv(self.file)
 
-        # write self.data as json to ./data.json
-        with open('data.json', 'w') as f:
-            jsonDump = {}
-            for key in self.data:
-                jsonDump[key] = self.data[key].tolist()
-            f.write(json.dumps(jsonDump))
-        f.close()
-
         logging.info('Processing:')
         self.traces = self.find_traces(self.data)
         self.roll, self.pitch, self.yaw = self.__analyze()
@@ -576,107 +567,7 @@ class CSV_log:
         return fig
 
 
-    def plot_all_resp__old(self, traces, style='ra'): # style='raw' for response vs. time in color plot
-        textsize = 7
-        titelsize = 10
-        rcParams.update({'font.size': 9})
-        logging.info('Making PID plot...')
-        fig = plt.figure('Response plot: Log number: ' + self.headdict['logNum']+'          '+self.file , figsize=(16, 8))
-        ### gridspec devides window into 24 horizontal, 3*10 vertical fields
-        gs1 = GridSpec(24, 3 * 10, wspace=0.6, hspace=0.7, left=0.04, right=1., bottom=0.05, top=0.97)
-
-        for i, tr in enumerate(traces):
-            ax0 = plt.subplot(gs1[0:6, i*10:i*10+9])
-            plt.title(tr.name)
-            plt.plot(tr.time, tr.gyro, label=tr.name + ' gyro')
-            plt.plot(tr.time, tr.input, label=tr.name + ' loop input')
-            plt.ylabel('degrees/second')
-            ax0.get_yaxis().set_label_coords(-0.1, 0.5)
-            plt.grid()
-            tracelim = np.max([np.abs(tr.gyro),np.abs(tr.input)])
-            plt.ylim([-tracelim*1.1, tracelim*1.1])
-            plt.legend(loc=1)
-            plt.setp(ax0.get_xticklabels(), visible=False)
-
-            ax1 = plt.subplot(gs1[6:8, i*10:i*10+9], sharex=ax0)
-            plt.hlines(self.headdict['tpa_percent'], tr.time[0], tr.time[-1], label='tpa', colors='red', alpha=0.5)
-            plt.fill_between(tr.time, 0., tr.throttle, label='throttle', color='grey', alpha=0.2)
-            plt.ylabel('throttle %')
-            ax1.get_yaxis().set_label_coords(-0.1, 0.5)
-            plt.grid()
-            plt.xlim([tr.time[0], tr.time[-1]])
-            plt.ylim([0, 100])
-            plt.legend(loc=1)
-            plt.xlabel('log time in s')
-
-            if style =='raw':
-                ###old raw data plot.
-                plt.setp(ax1.get_xticklabels(), visible=False)
-                ax2 = plt.subplot(gs1[9:16, i*10:i*10+9], sharex=ax0)
-                plt.pcolormesh(tr.avr_t, tr.time_resp, np.transpose(tr.spec_sm), vmin=0, vmax=2.)
-                plt.ylabel('response time in s')
-                ax2.get_yaxis().set_label_coords(-0.1, 0.5)
-                plt.xlabel('log time in s')
-                plt.xlim([tr.avr_t[0], tr.avr_t[-1]])
-
-            else:
-                ###response vs throttle plot. more useful.
-                ax2 = plt.subplot(gs1[9:16, i * 10:i * 10 + 9])
-                plt.title(tr.name + ' response', y=0.88, color='w')
-                #plt.pcolormesh([tr.thr_response['throt_scale'], tr.time_resp], tr.thr_response['hist2d_norm'], vmin=0., vmax=2.)
-                plt.pcolormesh(tr.thr_response['hist2d_norm'], vmin=0., vmax=2.)
-                plt.ylabel('response time in s')
-                ax2.get_yaxis().set_label_coords(-0.1, 0.5)
-                plt.xlabel('throttle in %')
-                plt.xlim([0.,100.])
-
-
-            theCM = plt.cm.get_cmap('Blues')
-            theCM._init()
-            alphas = np.abs(np.linspace(0., 0.5, theCM.N, dtype=np.float64))
-            theCM._lut[:-3,-1] = alphas
-            ax3 = plt.subplot(gs1[17:, i*10:i*10+9])
-            plt.contourf(*tr.resp_low[2], cmap=theCM, linestyles=None, antialiased=True, levels=np.linspace(0,1,20, dtype=np.float64))
-            plt.plot(tr.time_resp, tr.resp_low[0],
-                     label=tr.name + ' step response ' + '(<' + str(int(Trace.threshold)) + ') '
-                           + ' PID ' + self.headdict[tr.name + 'PID'])
-
-
-            if tr.high_mask.sum() > 0:
-                theCM = plt.cm.get_cmap('Oranges')
-                theCM._init()
-                alphas = np.abs(np.linspace(0., 0.5, theCM.N, dtype=np.float64))
-                theCM._lut[:-3,-1] = alphas
-                plt.contourf(*tr.resp_high[2], cmap=theCM, linestyles=None, antialiased=True, levels=np.linspace(0,1,20, dtype=np.float64))
-                plt.plot(tr.time_resp, tr.resp_high[0],
-                     label=tr.name + ' step response ' + '(>' + str(int(Trace.threshold)) + ') '
-                           + ' PID ' + self.headdict[tr.name + 'PID'])
-            plt.xlim([-0.001,0.501])
-
-
-            plt.legend(loc=1)
-            plt.ylim([0., 2])
-            plt.ylabel('strength')
-            ax3.get_yaxis().set_label_coords(-0.1, 0.5)
-            plt.xlabel('response time in s')
-
-            plt.grid()
-
-        meanfreq = 1./(traces[0].time[1]-traces[0].time[0])
-        ax4 = plt.subplot(gs1[12, -1])
-        t = Version+" | Betaflight: Version "+self.headdict['version']+' | Craftname: '+self.headdict['craftName']+\
-            ' | meanFreq: '+str(int(meanfreq))+' | rcRate/Expo: '+self.headdict['rcRate']+'/'+ self.headdict['rcExpo']+'\nrcYawRate/Expo: '+self.headdict['rcYawRate']+'/' \
-            +self.headdict['rcYawExpo']+' | deadBand: '+self.headdict['deadBand']+' | yawDeadBand: '+self.headdict['yawDeadBand'] \
-            +' | Throttle min/tpa/max: ' + self.headdict['minThrottle']+'/'+self.headdict['tpa_breakpoint']+'/'+self.headdict['maxThrottle'] \
-            + ' | dynThrPID: ' + self.headdict['dynThrottle']+ '| D-TermSP: ' + self.headdict['dTermSetPoint']+'| vbatComp: ' + self.headdict['vbatComp']
-
-        plt.text(0, 0, t, ha='left', va='center', rotation=90, color='grey', alpha=0.5, fontsize=textsize)
-        ax4.axis('off')
-        logging.info('Saving as image...')
-        plt.savefig(self.file[:-13] + self.name + '_' + str(self.headdict['logNum'])+'_response.png')
-        return fig
-
-    def plot_resp_trace(self, ax, tr):
+    def plot_trace(self, ax, tr):
         plt.title(tr.name)
         plt.plot(tr.time, tr.gyro, label=tr.name + ' gyro')
         plt.plot(tr.time, tr.input, label=tr.name + ' loop input')
@@ -688,7 +579,7 @@ class CSV_log:
         plt.legend(loc=1)
         plt.setp(ax.get_xticklabels(), visible=False)
 
-    def plot_resp_throttle(self, ax, tr):
+    def plot_throttle(self, ax, tr):
         plt.hlines(self.headdict['tpa_percent'], tr.time[0], tr.time[-1], label='tpa', colors='red', alpha=0.5)
         plt.fill_between(tr.time, 0., tr.throttle, label='throttle', color='grey', alpha=0.2)
         plt.ylabel('throttle %')
@@ -699,7 +590,7 @@ class CSV_log:
         plt.legend(loc=1)
         plt.xlabel('log time in s')
 
-    def plot_resp_response(self, ax, tr, style):
+    def plot_response(self, ax, tr, style):
         if style =='raw':
             plt.pcolormesh(tr.avr_t, tr.time_resp, np.transpose(tr.spec_sm), vmin=0, vmax=2.)
             plt.ylabel('response time in s')
@@ -707,13 +598,14 @@ class CSV_log:
             plt.xlabel('log time in s')
             plt.xlim([tr.avr_t[0], tr.avr_t[-1]])
         else:
+            plt.title(tr.name + ' response', y=0.88, color='w')
             plt.pcolormesh(tr.thr_response['hist2d_norm'], vmin=0., vmax=2.)
             plt.ylabel('response time in s')
             ax.get_yaxis().set_label_coords(-0.1, 0.5)
             plt.xlabel('throttle in %')
             plt.xlim([0.,100.])
 
-    def plot_resp_strength(self, ax, tr):
+    def plot_strength(self, ax, tr):
         theCM = plt.cm.get_cmap('Blues')
         theCM._init()
         alphas = np.abs(np.linspace(0., 0.5, theCM.N, dtype=np.float64))
@@ -750,16 +642,16 @@ class CSV_log:
 
         for i, tr in enumerate(traces):
             ax0 = plt.subplot(gs1[0:6, i*10:i*10+9])
-            self.plot_resp_trace(ax0, tr)
+            self.plot_trace(ax0, tr)
 
             ax1 = plt.subplot(gs1[6:8, i*10:i*10+9], sharex=ax0)
-            self.plot_resp_throttle(ax1, tr)
+            self.plot_throttle(ax1, tr)
 
-            ax2 = plt.subplot(gs1[9:16, i * 10:i * 10 + 9])
-            self.plot_resp_response(ax2, tr, style)
+            ax2 = plt.subplot(gs1[9:16, i*10:i*10+9], sharex=ax0)
+            self.plot_response(ax2, tr, style)
 
             ax3 = plt.subplot(gs1[17:, i*10:i*10+9])
-            self.plot_resp_strength(ax3, tr)
+            self.plot_strength(ax3, tr)
 
         meanfreq = 1./(traces[0].time[1]-traces[0].time[0])
         ax4 = plt.subplot(gs1[12, -1])
@@ -833,7 +725,6 @@ class CSV_log:
                 datdic.update({'I_term' + i: np.zeros_like(data['rcCommand[' + i + ']'].values)})
 
             datdic.update({'PID sum' + i: datdic['PID loop in'+i]+datdic['I_term'+i]+datdic['d_err'+i]})
-            
             if 'gyroADC[0]' in data.keys():
                 datdic.update({'gyroData' + i: data['gyroADC[' + i+']'].values})
             elif 'gyroData[0]' in data.keys():

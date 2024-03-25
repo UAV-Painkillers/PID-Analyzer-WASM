@@ -46,8 +46,7 @@ export interface PIDAnalyzerTraceData {
     };
   };
   time_resp: number[];
-  resp_low: [number[]];
-  resp_high?: [number[]];
+  resp_low: number[];
   high_mask: number[];
   noise_gyro: PIDAnalyzerTraceNoiseData;
   noise_d: PIDAnalyzerTraceNoiseData;

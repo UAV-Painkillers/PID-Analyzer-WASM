@@ -21,6 +21,7 @@ class Trace:
     noise_framelen = 0.3    # window width for noise analysis
     noise_superpos = 16     # subsampling for noise analysis windows
 
+    # TODO: optimize by removing all code / analysis that is not exported / needed
     def to_json_object(self):
         output = {
             'gyro': self.gyro.tolist(),
@@ -29,9 +30,7 @@ class Trace:
             'throttle': self.throttle.tolist(),
             'feedforward': self.data['feedforward'].tolist(),
             'time_resp': self.time_resp.tolist(),
-            'resp_low': [
-                self.resp_low[0].tolist(),
-            ],
+            'resp_low': self.resp_low[0].tolist(),
             'high_mask': self.high_mask.tolist(),
             'noise_gyro': {
                 'freq_axis': self.noise_gyro['freq_axis'].tolist(),
@@ -160,9 +159,9 @@ class Trace:
     async def async_equalize(self, time, data):
         ### equalizes time scale
         if (len(time) == 0 or len(data) == 0):
-            logging.warning('No data for equalization!')
             await reportStatusToJs("ERROR", "No data for equalization!")
-            sys.exit(0)
+            logging.warning('log No data for equalization!')
+            sys.exit(1)
 
         data_f = interp1d(time, data)
         newtime = np.linspace(time[0], time[-1], len(time), dtype=np.float64)
@@ -326,7 +325,7 @@ class Trace:
 
             if (resp_y.size == 0):
                 await reportStatusToJs("ERROR", "resp_y.size == 0")
-                sys.exit(0)
+                sys.exit(1)
                 return
             pixelpos = np.repeat(resp_y.reshape(len(resp_y), 1), len(times[0]), axis=1)
             avr = np.average(pixelpos, 0, weights=hist2d_sm * hist2d_sm)
@@ -363,6 +362,7 @@ class CSV_log:
             json.dump(self.headdict, json_file, ensure_ascii=False, indent=4)
         json_file.close()
         await reportStatusToJs("WRITE_HEADDICT_TO_JSON_COMPLETE")
+        # TODO: optimize by deleting the headdict file directly after this report
 
         await self.async_analyze()
 
@@ -383,6 +383,8 @@ class CSV_log:
             with open(trace_out_path, 'w', encoding='utf-8') as json_file:
                 json.dump(trace.to_json_object(), json_file, ensure_ascii=False, indent=4)
             json_file.close()
+            # TODO: optimize by reading the trace file directly after this report
+            # and then deleting the file from memory
             await reportStatusToJs("ANALYZE_PID_TRACE_COMPLETE", trace_data['name'])
             del trace
 
@@ -402,10 +404,7 @@ class CSV_log:
                    'gyroADC[0]', 'gyroADC[1]', 'gyroADC[2]',
                    'gyroData[0]', 'gyroData[1]', 'gyroData[2]',
                    'ugyroADC[0]', 'ugyroADC[1]', 'ugyroADC[2]',
-                   #'accSmooth[0]','accSmooth[1]', 'accSmooth[2]',
                    'debug[0]', 'debug[1]', 'debug[2]','debug[3]',
-                   #'motor[0]', 'motor[1]', 'motor[2]', 'motor[3]',
-                   #'energyCumulative (mAh)','vbatLatest (V)', 'amperageLatest (A)'
                    ]
         data = read_csv(fpath, header=0, skipinitialspace=1, usecols=lambda k: k in wanted, dtype=np.float64)
         datdic.update({'time_us': data['time (us)'].values * 1e-6})
@@ -413,8 +412,12 @@ class CSV_log:
 
         for i in ['0', '1', '2']:
             datdic.update({'rcCommand' + i: data['rcCommand['+i+']'].values})
-            datdic.update({'axisF' + i: data['axisF[' + i + ']'].values})
-            #datdic.update({'PID loop in' + i: data['axisP[' + i + ']'].values})
+            try:
+                datdic.update({'axisF' + i: data['axisF[' + i + ']'].values})
+            except:
+                logging.warning('No feedforward['+str(i)+'] trace found!')
+                datdic.update({'axisF' + i: np.zeros_like(data['rcCommand[' + i + ']'].values)})
+
             try:
                 datdic.update({'debug' + i: data['debug[' + i + ']'].values})
             except:
@@ -441,8 +444,6 @@ class CSV_log:
                     logging.warning('No I['+str(i)+'] trace found!')
                 datdic.update({'I_term' + i: np.zeros_like(data['rcCommand[' + i + ']'].values)})
 
-            datdic.update({'PID sum' + i: datdic['PID loop in'+i]+datdic['I_term'+i]+datdic['d_err'+i]})
-            
             if 'gyroADC[0]' in data.keys():
                 datdic.update({'gyroData' + i: data['gyroADC[' + i+']'].values})
             elif 'gyroData[0]' in data.keys():
@@ -452,6 +453,7 @@ class CSV_log:
             else:
                 logging.warning('No gyro trace found!')
         
+        del data
         await reportStatusToJs("READING_CSV_COMPLETE")
         return datdic
 
@@ -464,27 +466,26 @@ class CSV_log:
 
         traces = [{'name':'roll'},{'name':'pitch'},{'name':'yaw'}]
 
-        for i, dic in enumerate(traces):
-            dic.update({'time':time})
-            dic.update({'p_err':dat['PID loop in'+str(i)]})
-            dic.update({'rcinput': dat['rcCommand' + str(i)]})
-            dic.update({'feedforward': dat['axisF' + str(i)]})
-            dic.update({'gyro':dat['gyroData'+str(i)]})
-            dic.update({'PIDsum':dat['PID sum'+str(i)]})
-            dic.update({'d_err': dat['d_err' + str(i)]})
-            dic.update({'debug': dat['debug' + str(i)]})
+        for trace_index, trace_dic in enumerate(traces):
+            trace_dic.update({'time':time})
+            trace_dic.update({'p_err':dat['PID loop in'+str(trace_index)]})
+            trace_dic.update({'rcinput': dat['rcCommand' + str(trace_index)]})
+            trace_dic.update({'feedforward': dat['axisF' + str(trace_index)]})
+            trace_dic.update({'gyro':dat['gyroData'+str(trace_index)]})
+            trace_dic.update({'d_err': dat['d_err' + str(trace_index)]})
+            trace_dic.update({'debug': dat['debug' + str(trace_index)]})
             if 'KISS' in self.headdict['fwType']:
-                dic.update({'P': 1.})
+                trace_dic.update({'P': 1.})
                 self.headdict.update({'tpa_percent': 0.})
             elif 'Raceflight' in self.headdict['fwType']:
-                dic.update({'P': 1.})
+                trace_dic.update({'P': 1.})
                 self.headdict.update({'tpa_percent': 0.})
 
             else:
-                dic.update({'P':float((self.headdict[dic['name']+'PID']).split(',')[0])})
+                trace_dic.update({'P':float((self.headdict[trace_dic['name']+'PID']).split(',')[0])})
                 self.headdict.update({'tpa_percent': (float(self.headdict['tpa_breakpoint']) - 1000.) / 10.})
 
-            dic.update({'throttle':throt})
+            trace_dic.update({'throttle':throt})
 
         return traces
 
@@ -511,6 +512,7 @@ async def async_run():
     await log.async_init()
 
     del log
+    del header_dict
 
     await reportStatusToJs("COMPLETE")
 
