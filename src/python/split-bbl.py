@@ -50,6 +50,10 @@ async def async_split_bbl(bbl_path, out_path):
 
     sub_bbl_file_names = []
     for log_index, raw_log in enumerate(raw_logs):
+        # skip first log because it will allways be empty
+        if log_index == 0:
+            continue
+
         _, path_ext = os.path.splitext(os.path.basename(bbl_path))
         sub_bbl_path = os.path.join(out_path, f"{log_index}{path_ext}")
 
