@@ -424,6 +424,7 @@ class CSV_log:
                    'gyroData[0]', 'gyroData[1]', 'gyroData[2]',
                    'ugyroADC[0]', 'ugyroADC[1]', 'ugyroADC[2]',
                    'debug[0]', 'debug[1]', 'debug[2]','debug[3]',
+                   'gyroUnfilt[0]', 'gyroUnfilt[1]', 'gyroUnfilt[2]'
                    ]
         data = read_csv(fpath, header=0, skipinitialspace=1, usecols=lambda k: k in wanted, dtype=np.float64)
         datdic.update({'time_us': data['time (us)'].values * 1e-6})
@@ -442,6 +443,12 @@ class CSV_log:
             except:
                 logging.warning('No debug['+str(i)+'] trace found!')
                 datdic.update({'debug' + i: np.zeros_like(data['rcCommand[' + i + ']'].values)})
+
+            # overwrite debug values with gyroUnfilt values if available
+            try:
+                datdic.update({'debug' + i: data['gyroUnfilt[' + i + ']'].values})
+            except:
+                logging.warning('No gyroUnfilt['+str(i)+'] trace found, guess this is not BF >=4.5 :)')
 
             # get P trace (including case of missing trace)
             try:
