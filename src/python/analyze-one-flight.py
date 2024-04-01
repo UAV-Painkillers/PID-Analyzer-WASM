@@ -44,6 +44,12 @@ class Trace:
                 'freq_axis': self.noise_debug['freq_axis'].tolist(),
                 'hist2d_sm': self.noise_debug['hist2d_sm'].tolist(),
             },
+            'delay': {
+                'latency_half_height': self.delay['latency_half_height'],
+                'half_height_index': int(self.delay['half_height_index']),
+                'peak_response': self.delay['peak_response'],
+                'peak_time': self.delay['peak_time'],
+            }
         }
 
         if self.high_mask.sum()>0:
@@ -103,6 +109,8 @@ class Trace:
                                 np.average(self.noise_debug['hist2d'], axis=1, weights=thr_mask)
         else:
             self.filter_trans = self.noise_gyro['hist2d'].mean(axis=1)*0.
+
+        self.delay = self.calculate_delay(self.time_resp, self.resp_low[0])
 
     @staticmethod
     def low_high_mask(signal, threshold):
@@ -358,6 +366,33 @@ class Trace:
         average = np.average(values, axis=0, weights=weights)
         variance = np.average((values - average) ** 2, axis=0, weights=weights)
         return (average, np.sqrt(variance))
+    
+    def calculate_delay(self, time_resp, resp_low):
+        # Calculate the maximum response and its index
+        logging.info('one')
+        # Jetzt können Sie np.max sicher anwenden
+        max_response = np.max(resp_low)
+        logging.info('two')
+        max_index = np.argmax(resp_low)
+
+        logging.info('three')
+        # Calculate the half height
+        half_height = max_response / 2
+
+        logging.info('four')
+        # Find the first index where response is greater than half height
+        half_height_index = np.where(resp_low > half_height)[0][0]
+
+        logging.info('five')
+        # Calculate the latency at half height
+        latency_half_height = time_resp[half_height_index]
+
+        logging.info('six')
+        # Calculate the peak response and peak time
+        peak_response = max_response
+        peak_time = time_resp[max_index]
+
+        return {'latency_half_height': latency_half_height, 'half_height_index': half_height_index, 'peak_response': peak_response, 'peak_time': peak_time}
 
 class CSV_log:
     def __init__(self, fpath, headdict, result_path):

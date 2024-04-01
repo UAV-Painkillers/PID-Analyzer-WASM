@@ -52,6 +52,12 @@ export interface PIDAnalyzerTraceData {
   noise_d: PIDAnalyzerTraceNoiseData;
   noise_debug: PIDAnalyzerTraceNoiseData;
   filter_trans: number[];
+  delay: {
+    latency_half_height: number;
+    latency_half_height_index: number;
+    peak_response: number;
+    peak_time: number;
+  };
 }
 
 export interface PIDAnalyzerResult {
