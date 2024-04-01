@@ -54,7 +54,7 @@ export interface PIDAnalyzerTraceData {
   filter_trans: number[];
   delay: {
     latency_half_height: number;
-    latency_half_height_index: number;
+    half_height_index: number;
     peak_response: number;
     peak_time: number;
   };
