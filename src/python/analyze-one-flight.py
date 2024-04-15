@@ -110,7 +110,16 @@ class Trace:
         else:
             self.filter_trans = self.noise_gyro['hist2d'].mean(axis=1)*0.
 
-        self.delay = self.calculate_delay(self.time_resp, self.resp_low[0])
+        try:
+            self.delay = self.calculate_delay(self.time_resp, self.resp_low[0])
+        except Exception as e:
+            logging.error('Error: ' + str(e))
+            self.delay =  {
+                'latency_half_height': -1,
+                'half_height_index': -1,
+                'peak_response': -1,
+                'peak_time': -1
+            }
 
     @staticmethod
     def low_high_mask(signal, threshold):
